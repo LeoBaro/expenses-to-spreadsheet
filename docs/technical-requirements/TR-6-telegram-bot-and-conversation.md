@@ -1,6 +1,8 @@
 # TR-6. Telegram Bot & Conversation
 
-> Status: Draft skeleton.
+> Status: **Scaffolded** — transport plumbing (send + long-poll + callback routing)
+> implemented and importable; the full FR-6→8 interactive workflows arrive with the
+> Processor (TR-2), which owns the workflow state.
 
 ## Traceability
 - Functional requirements: FR-5 (auto-categorization notification), FR-6 (unknown-merchant workflow), FR-7 (categorize workflow), FR-8 (ignore workflow)
@@ -60,11 +62,21 @@ user.
 - Ignore flow (FR-8): present ignore-pattern candidates and return the selection to the Processor (which appends the pattern, refreshes cache, marks processed).
 
 ## Design Decisions
-_TBD._ Candidate topics:
-- **Conversation state machine:** how in-flight state (which transaction, which step, chosen Primary/Secondary) is stored, keyed (by chat/callback), and expired/timed out; survival across restarts. **Note (orchestration decision):** since the Processor (TR-2) orchestrates, the *workflow* state (step + partial selections per transaction) belongs with the Processor; the Bot holds only the mapping from a Telegram callback to the pending interaction. Confirm this split when specifying TR-2.
-- Telegram integration mode: long polling vs. webhook (interacts with TR-0 FastAPI app).
-- UI mechanics: inline keyboards / callback queries; mapping callbacks back to a pending transaction.
-- Concurrency: multiple unknown transactions awaiting input simultaneously.
+- **Library (decided): python-telegram-bot (PTB v22).** Async; the bot wires PTB
+  handlers (`CommandHandler`, `CallbackQueryHandler`, `MessageHandler`) that **delegate**
+  to a `TelegramUpdateHandler` (the Processor). **No `ConversationHandler`** — that would
+  put workflow state in the bot, which we rejected.
+- **Delivery (decided): long polling.** No public URL required (works on a laptop /
+  home server). Standalone via `run_polling()`; when embedded in the FastAPI app (TR-0)
+  the Application's `initialize`/`start`/`updater.start_polling` will be used in the
+  existing loop.
+- **UI mechanics (decided):** inline keyboards, one option per button;
+  `callback_data = prefix + option` truncated to Telegram's 64-byte limit.
+- **Conversation state (decided elsewhere):** the *workflow* state (which transaction,
+  step, partial selections) lives in the Processor (TR-2); the bot only routes a
+  callback back to it. Keying a callback to its pending interaction is finalized in TR-2.
+- **Still open:** timeout/abandonment of an unfinished workflow; multiple unknown
+  transactions awaiting input concurrently (both resolved with TR-2's workflow state).
 
 ## Data Model / Contracts
 _TBD._ Conversation/session record: transaction ref, current step, partial selections. Message payloads for notification (FR-5 fields) and each prompt (FR-6/7/8).
@@ -82,6 +94,22 @@ _TBD._ Conversation/session record: transaction ref, current step, partial selec
 - Assumes a single known chat/user (single-user design principle).
 
 ## Open Questions
-- Where does conversation state live — in-memory only, or persisted (restart resilience)?
+- Where does conversation state live — in-memory only, or persisted (restart resilience)? (Owned by TR-2.)
 - Timeout/abandonment behavior for a workflow the user never completes?
 - Does an in-flight unknown transaction block others, or run concurrently?
+
+## Implementation (scaffold)
+Package [`src/expenses/telegram_bot/`](../../src/expenses/telegram_bot/) (named to avoid
+clashing with PTB's `telegram` package):
+- [`bot.py`](../../src/expenses/telegram_bot/bot.py) — `ExpenseBot`: builds the PTB
+  `Application`, registers `/start` + callback + message handlers that delegate to a
+  `TelegramUpdateHandler`; outbound `send_message` (FR-5) / `send_options` (FR-6/7/8);
+  `run_polling()`.
+- [`ports.py`](../../src/expenses/telegram_bot/ports.py) — `TelegramUpdateHandler`
+  Protocol (implemented by TR-2) + `LoggingUpdateHandler` scaffold stand-in.
+- [`keyboards.py`](../../src/expenses/telegram_bot/keyboards.py) — inline-keyboard builder.
+- [`telegram_cli.py`](../../src/expenses/telegram_cli.py) — `expenses-telegram run` (poll;
+  `/start` reveals your chat id) and `send-test` (push a two-button prompt).
+
+Config: `EXPENSES_TELEGRAM_BOT_TOKEN`, `EXPENSES_TELEGRAM_CHAT_ID`. Tests cover the
+keyboard builder. The FR-5/6/7/8 message *content* and callback-keying land with TR-2.

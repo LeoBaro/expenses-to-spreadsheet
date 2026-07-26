@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,6 +45,25 @@ class Settings(BaseSettings):
     google_spreadsheet_id: str = ""
     support_sheet_name: str = "Support"
     ignore_sheet_name: str = "Ignore"
+
+    # --- State (idempotency) ---
+    # Local runtime state file for processed transaction ids (FR-13). Must live on a
+    # durable volume that survives restarts. Year-keying is a TR-0 concern (DD-4).
+    state_file_path: Path = Path("state/processed_transactions.log")
+
+    # --- Telegram ---
+    telegram_bot_token: str = ""
+    # The single user's chat id (notifications target it). Discover it by sending
+    # /start to the bot while `expenses-telegram run` is polling.
+    telegram_chat_id: int | None = None
+
+    @field_validator("telegram_chat_id", mode="before")
+    @classmethod
+    def _blank_to_none(cls, value: object) -> object:
+        # An empty/whitespace env var (e.g. EXPENSES_TELEGRAM_CHAT_ID=) means "unset".
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
 
     def private_key(self) -> str:
         if self.eb_private_key_path is None:
