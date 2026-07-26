@@ -1,8 +1,9 @@
 # TR-6. Telegram Bot & Conversation
 
-> Status: **Scaffolded** — transport plumbing (send + long-poll + callback routing)
-> implemented and importable; the full FR-6→8 interactive workflows arrive with the
-> Processor (TR-2), which owns the workflow state.
+> Status: **Implemented.** Transport plumbing (send + long-poll + callback routing) and
+> the FR-6→8 interactive workflows are live. Per the design, the workflow *state* lives
+> in the Processor (TR-2, `conversation.py`); the Bot stays pure UI — it renders prompts
+> and relays taps. Callback keying was finalized here as `f"{step}:{index}"`.
 
 ## Traceability
 - Functional requirements: FR-5 (auto-categorization notification), FR-6 (unknown-merchant workflow), FR-7 (categorize workflow), FR-8 (ignore workflow)
@@ -70,16 +71,28 @@ user.
   home server). Standalone via `run_polling()`; when embedded in the FastAPI app (TR-0)
   the Application's `initialize`/`start`/`updater.start_polling` will be used in the
   existing loop.
-- **UI mechanics (decided):** inline keyboards, one option per button;
-  `callback_data = prefix + option` truncated to Telegram's 64-byte limit.
+- **UI mechanics (decided, revised):** inline keyboards, one option per button;
+  `callback_data = f"{step}:{index}"` — a step tag plus the option's **index**, not its
+  text. (Superseded the earlier `prefix + option` idea: category names can be long or
+  contain colons and would risk the 64-byte cap; index encoding is always tiny and the
+  Processor maps the index back to the option it presented. See TR-2 DD-6.)
 - **Conversation state (decided elsewhere):** the *workflow* state (which transaction,
-  step, partial selections) lives in the Processor (TR-2); the bot only routes a
-  callback back to it. Keying a callback to its pending interaction is finalized in TR-2.
-- **Still open:** timeout/abandonment of an unfinished workflow; multiple unknown
-  transactions awaiting input concurrently (both resolved with TR-2's workflow state).
+  step, partial selections) lives in the Processor (TR-2, `conversation.py`); the bot
+  only routes a callback back to it.
+- **Concurrency (resolved in TR-2 DD-5):** one active conversation at a time; further
+  unknown transactions queue FIFO and are drained on completion — so a callback is never
+  ambiguous. Abandonment/timeout of an unfinished workflow is **still open** (an
+  unanswered prompt simply persists; a later poll won't double-notify because in-flight
+  ids are de-duped, but there is no explicit expiry yet).
 
 ## Data Model / Contracts
-_TBD._ Conversation/session record: transaction ref, current step, partial selections. Message payloads for notification (FR-5 fields) and each prompt (FR-6/7/8).
+The Bot itself is stateless beyond PTB's own machinery. The conversation/session record
+(transaction ref, current step, partial selections) lives in TR-2's
+`ConversationOrchestrator` (`Session`), not here. Contracts at the boundary:
+`TelegramUpdateHandler` (inbound: `on_callback(chat_id, message_id, data, callback_id)`,
+`on_message(chat_id, text)`) and the outbound presenter surface (`send_message`,
+`send_options(chat_id, text, options, *, tag)`), where each button's `callback_data` is
+`f"{tag}:{index}"`.
 
 ## Interfaces
 - Inbound: Telegram updates (callbacks) from the user; notification + prompt requests from the Transaction Processor (TR-2).
@@ -94,22 +107,33 @@ _TBD._ Conversation/session record: transaction ref, current step, partial selec
 - Assumes a single known chat/user (single-user design principle).
 
 ## Open Questions
-- Where does conversation state live — in-memory only, or persisted (restart resilience)? (Owned by TR-2.)
-- Timeout/abandonment behavior for a workflow the user never completes?
-- Does an in-flight unknown transaction block others, or run concurrently?
+- ✅ Where does conversation state live? In-memory in the Processor (TR-2). **Not**
+  persisted: a restart drops in-flight conversations, but the transactions stay
+  unprocessed and re-surface on the next poll — acceptable for a single-user app.
+- ✅ Does an in-flight unknown transaction block others? Yes — one active conversation,
+  the rest queue FIFO (TR-2 DD-5).
+- ⏳ Timeout/abandonment behavior for a workflow the user never completes — still open
+  (no explicit expiry; the prompt just persists).
 
-## Implementation (scaffold)
+## Implementation
 Package [`src/expenses/telegram_bot/`](../../src/expenses/telegram_bot/) (named to avoid
 clashing with PTB's `telegram` package):
 - [`bot.py`](../../src/expenses/telegram_bot/bot.py) — `ExpenseBot`: builds the PTB
   `Application`, registers `/start` + callback + message handlers that delegate to a
-  `TelegramUpdateHandler`; outbound `send_message` (FR-5) / `send_options` (FR-6/7/8);
-  `run_polling()`.
+  `TelegramUpdateHandler` (the TR-2 orchestrator at runtime); outbound `send_message`
+  (FR-5) / `send_options` (FR-6/7/8, index-keyed keyboards); `run_polling()` for
+  standalone use (TR-0 drives it in-loop instead).
 - [`ports.py`](../../src/expenses/telegram_bot/ports.py) — `TelegramUpdateHandler`
-  Protocol (implemented by TR-2) + `LoggingUpdateHandler` scaffold stand-in.
-- [`keyboards.py`](../../src/expenses/telegram_bot/keyboards.py) — inline-keyboard builder.
+  Protocol (implemented by TR-2's `ConversationOrchestrator`) + `LoggingUpdateHandler`
+  fallback used when Telegram is unconfigured.
+- [`keyboards.py`](../../src/expenses/telegram_bot/keyboards.py) — index-keyed
+  inline-keyboard builder (`callback_data = f"{tag}:{index}"`).
 - [`telegram_cli.py`](../../src/expenses/telegram_cli.py) — `expenses-telegram run` (poll;
   `/start` reveals your chat id) and `send-test` (push a two-button prompt).
+
+Tests: [`tests/test_telegram_keyboards.py`](../../tests/test_telegram_keyboards.py) covers
+the index-keyed builder; the interactive workflow itself is tested via TR-2's
+[`tests/test_conversation.py`](../../tests/test_conversation.py).
 
 Config: `EXPENSES_TELEGRAM_BOT_TOKEN`, `EXPENSES_TELEGRAM_CHAT_ID`. Tests cover the
 keyboard builder. The FR-5/6/7/8 message *content* and callback-keying land with TR-2.

@@ -1,8 +1,9 @@
 # TR-2. Transaction Processor
 
-> Status: **Automatic path implemented** (FR-1/4/5), unit-tested. The interactive
-> unknown-merchant workflow (FR-6→8) is a later slice — unknown transactions are
-> currently delegated to a placeholder handler.
+> Status: **Implemented** (automatic FR-1/4/5 **and** interactive FR-6→8 paths),
+> unit-tested. The automatic path lives in `processor.py`; the interactive
+> unknown-merchant workflow lives in `conversation.py` (the Processor's conversation
+> orchestrator), which owns all workflow state.
 
 ## Traceability
 - Functional requirements: FR-1, FR-4, FR-5, FR-6 (orchestration of the processing flow)
@@ -75,11 +76,33 @@ external access. The round trip to the Bot (present options → relay selection)
 - **Notification (decided):** FR-5 notification is **best-effort** — sent *after* mark,
   and a failure is logged and swallowed (an informational message must never block the
   flow or cause reprocessing).
-- **Unknown handling (this slice):** delegated to an `UnknownTransactionHandler` port;
-  the placeholder logs and does **not** mark processed (revisited when FR-6→8 lands), and
-  does not notify (avoids re-spamming each poll). The real interactive workflow replaces it.
-- **Decoupling:** the Processor depends only on Protocols (`Engine`, `ExpenseWriter`,
-  `ProcessedState`, `Notifier`, `UnknownTransactionHandler`) satisfied by TR-3/4/7/6.
+- **Unknown handling (implemented):** delegated to an `UnknownTransactionHandler` port,
+  now satisfied by the **conversation orchestrator** (`conversation.py`). A logging
+  placeholder remains the fallback when Telegram is unconfigured.
+- **Interactive concurrency (decided, DD-5):** at most **one conversation is active**
+  at a time (single-user design); further unknown transactions **queue (FIFO)** and are
+  drained when the active one finishes. Draining re-runs each queued transaction through
+  the **full pipeline**, so a merchant rule just added for one transaction
+  auto-categorizes its siblings in the same batch. All workflow-state mutation is
+  serialized by an `asyncio.Lock`, released before re-processing (which re-enters the
+  handler) so there is no re-entrancy deadlock. In-flight transaction ids are de-duped so
+  a later poll cycle cannot double-queue or re-notify a pending one.
+- **Callback keying (decided, DD-6):** each prompt's inline buttons carry
+  `f"{step}:{index}"` — a **step tag** plus the **option index**, never the option text.
+  Indices keep callback_data within Telegram's 64-byte limit regardless of category-name
+  length, and the step tag lets the orchestrator reject stale taps on superseded prompts
+  (a tap is accepted only when its tag equals the active session's current step).
+- **Empty-candidate fallbacks (decided):** if no merchant substrings can be suggested
+  (FR-9), the expense is still recorded with the chosen category (the user's work isn't
+  lost) but **no rule** is created; if no ignore patterns can be suggested (FR-10), the
+  transaction is still marked processed (FR-8's core effect) with **no pattern** added.
+  A missing Primary/Secondary list is a Support-sheet misconfiguration → the session
+  aborts *without* marking processed, so it is retried once the sheet is fixed.
+- **Decoupling:** both paths depend only on Protocols — the automatic path on `Engine`,
+  `ExpenseWriter`, `ProcessedState`, `Notifier`, `UnknownTransactionHandler`; the
+  conversation on `ConversationEngine`, `RuleWriter`, `RefreshableCache`, `ProcessedState`,
+  `Presenter` — all satisfied by TR-3/4/5/6/7. The composition root (TR-0) breaks the
+  bot ⇄ orchestrator and processor ⇄ orchestrator cycles via `bind()` / `set_reprocess()`.
 
 ## Data Model / Contracts
 Implements the poller's `TransactionSink` — `async handle(transaction: Transaction)`.
@@ -110,5 +133,20 @@ Package [`src/expenses/processor/`](../../src/expenses/processor/):
 
 Tests in [`tests/test_processor.py`](../../tests/test_processor.py) cover all four
 branches (already-processed, ignore, merchant match, unknown), the write→mark ordering,
-and best-effort notification. **Not yet implemented:** the FR-6→8 interactive workflow
-and its Processor-owned conversation state.
+and best-effort notification.
+
+## Implementation (interactive path)
+[`conversation.py`](../../src/expenses/processor/conversation.py) —
+`ConversationOrchestrator` is both the `UnknownTransactionHandler` (the automatic path
+delegates unknowns to it) and the `TelegramUpdateHandler` (the Bot routes taps to it).
+It owns the `Session` workflow state (transaction, `Step`, partial selections), the
+one-active-plus-FIFO-queue discipline, the step machine
+(`ACTION→PRIMARY→SECONDARY→MERCHANT` for FR-7, `ACTION→IGNORE` for FR-8), and every
+terminal write (Support/Ignore update → cache refresh → expense write → mark processed).
+The five Protocols it needs (`ConversationEngine`, `RuleWriter`, `RefreshableCache`,
+`Presenter`, and `ProcessedState`) are defined alongside it / in `ports.py`.
+
+Tests in [`tests/test_conversation.py`](../../tests/test_conversation.py) cover the
+categorize and ignore happy paths, stale/out-of-range/malformed and no-session
+callbacks, the empty-candidate fallbacks, the abort-on-misconfig path, and the
+queue/drain behaviour (queue-then-begin-next, dedup, drain-until-empty).

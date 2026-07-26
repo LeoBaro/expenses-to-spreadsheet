@@ -18,10 +18,18 @@ logger = logging.getLogger(__name__)
 
 
 class SheetsWriter:
-    def __init__(self, spreadsheets, spreadsheet_id: str, *, support_sheet: str = "Support") -> None:
+    def __init__(
+        self,
+        spreadsheets,
+        spreadsheet_id: str,
+        *,
+        support_sheet: str = "Support",
+        ignore_sheet: str = "Ignore",
+    ) -> None:
         self._api = spreadsheets
         self._sid = spreadsheet_id
         self._support_sheet = support_sheet
+        self._ignore_sheet = ignore_sheet
         self._sheet_titles: set[str] | None = None
 
     def append_expense(self, expense: ExpenseRow) -> None:
@@ -73,6 +81,33 @@ class SheetsWriter:
             body={"values": [[", ".join(existing)]]},
         ).execute()
         logger.info("added substring %r to %s/%s", normalized, primary, secondary)
+
+    def add_ignore_pattern(self, pattern: str) -> None:
+        """Append a pattern to the single-column Ignore sheet (FR-8 step 4).
+
+        Stored lowercase; duplicates (case-insensitive) are not inserted. Matching is
+        case-insensitive anyway (the Engine lowercases both sides), so lowercase keeps
+        the sheet tidy and consistent with merchant substrings (FR-11)."""
+        normalized = pattern.strip().lower()
+        if not normalized:
+            raise ValueError("ignore pattern is empty")
+
+        existing = {
+            (row[0] if row else "").strip().lower()
+            for row in self._get(a1_range(self._ignore_sheet, "A:A"))
+        }
+        if normalized in existing:
+            logger.info("ignore pattern %r already present", normalized)
+            return
+
+        self._api.values().append(
+            spreadsheetId=self._sid,
+            range=a1_range(self._ignore_sheet, "A:A"),
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body={"values": [[normalized]]},
+        ).execute()
+        logger.info("appended ignore pattern %r", normalized)
 
     def _find_rule_row(self, values: list[list[str]], primary: str, secondary: str) -> int:
         target_primary, target_secondary = primary.strip(), secondary.strip()

@@ -57,6 +57,7 @@ class GoogleSheetsClient:
             spreadsheets,
             settings.google_spreadsheet_id,
             support_sheet=settings.support_sheet_name,
+            ignore_sheet=settings.ignore_sheet_name,
         )
         return cls(reader, writer)
 
@@ -71,3 +72,6 @@ class GoogleSheetsClient:
 
     async def add_merchant_substring(self, primary: str, secondary: str, substring: str) -> None:
         await asyncio.to_thread(self._writer.add_merchant_substring, primary, secondary, substring)
+
+    async def add_ignore_pattern(self, pattern: str) -> None:
+        await asyncio.to_thread(self._writer.add_ignore_pattern, pattern)

@@ -91,10 +91,13 @@ class ExpenseBot:
         """Send an informational notification (FR-5)."""
         await self._app.bot.send_message(chat_id, text)
 
-    async def send_options(self, chat_id: int, text: str, options: list[str], *, prefix: str = "") -> None:
-        """Send a prompt with an inline keyboard of choices (FR-6/7/8)."""
+    async def send_options(self, chat_id: int, text: str, options: list[str], *, tag: str = "") -> None:
+        """Send a prompt with an inline keyboard of choices (FR-6/7/8).
+
+        ``tag`` identifies the workflow step; each button's callback_data is
+        ``f"{tag}:{index}"`` so the Processor can map a tap back to the option."""
         await self._app.bot.send_message(
-            chat_id, text, reply_markup=options_keyboard(options, prefix=prefix)
+            chat_id, text, reply_markup=options_keyboard(options, tag=tag)
         )
 
     # --- lifecycle ---

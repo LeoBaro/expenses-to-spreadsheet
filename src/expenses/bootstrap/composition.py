@@ -23,13 +23,19 @@ from expenses.poller.enable_banking.auth import EnableBankingAuth
 from expenses.poller.enable_banking.gateway import EnableBankingGateway
 from expenses.poller.poller import TransactionPoller
 from expenses.poller.scheduler import IntervalScheduler
+from expenses.processor.conversation import ConversationOrchestrator
 from expenses.processor.notifier import TelegramNotifier
-from expenses.processor.ports import LoggingNotifier, LoggingUnknownHandler, Notifier
+from expenses.processor.ports import (
+    LoggingNotifier,
+    LoggingUnknownHandler,
+    Notifier,
+    UnknownTransactionHandler,
+)
 from expenses.processor.processor import TransactionProcessor
 from expenses.sheets.client import GoogleSheetsClient
 from expenses.state.manager import StateManager
 from expenses.telegram_bot.bot import ExpenseBot
-from expenses.telegram_bot.ports import LoggingUpdateHandler
+from expenses.telegram_bot.ports import LoggingUpdateHandler, TelegramUpdateHandler
 
 logger = logging.getLogger(__name__)
 
@@ -117,25 +123,39 @@ def build_components(settings: Settings) -> Components:
     # --- State (TR-7) ---
     state = StateManager(settings.state_file_path)
 
-    # --- Telegram (TR-6) + notifier (TR-2 port) ---
+    # --- Telegram (TR-6) + interactive workflow (TR-2, FR-6→8) ---
+    #
+    # The interactive workflow needs both a bot to talk through and a known chat to
+    # talk to. With both, the ConversationOrchestrator is *the* inbound update handler
+    # (TR-6 routes taps to it) *and* the unknown-transaction handler (the automatic
+    # path delegates to it). Without a chat id we can still send notifications but not
+    # run a conversation, so unknowns fall back to logging.
     bot: ExpenseBot | None = None
     notifier: Notifier = LoggingNotifier()
-    if settings.telegram_bot_token:
-        # The bot delegates inbound updates to a TelegramUpdateHandler; the interactive
-        # FR-6→8 workflow (TR-2 slice 2) will implement it. Until then it just logs.
-        bot = ExpenseBot.build(settings.telegram_bot_token, LoggingUpdateHandler())
-        if settings.telegram_chat_id is not None:
-            notifier = TelegramNotifier(bot, settings.telegram_chat_id)
-        else:
-            logger.warning(
-                "Telegram token set but EXPENSES_TELEGRAM_CHAT_ID is not — "
-                "notifications will be logged, not sent. Send /start to the bot to learn it."
-            )
+    unknown_handler: UnknownTransactionHandler = LoggingUnknownHandler()
+    orchestrator: ConversationOrchestrator | None = None
 
-    # --- Processor (TR-2, automatic path) ---
-    processor = TransactionProcessor(
-        engine, sheets, state, notifier, LoggingUnknownHandler()
-    )
+    if settings.telegram_bot_token and settings.telegram_chat_id is not None:
+        orchestrator = ConversationOrchestrator(
+            engine, sheets, cache, state, settings.telegram_chat_id
+        )
+        update_handler: TelegramUpdateHandler = orchestrator
+        bot = ExpenseBot.build(settings.telegram_bot_token, update_handler)
+        orchestrator.bind(bot)  # break the bot ⇄ orchestrator cycle
+        notifier = TelegramNotifier(bot, settings.telegram_chat_id)
+        unknown_handler = orchestrator
+    elif settings.telegram_bot_token:
+        bot = ExpenseBot.build(settings.telegram_bot_token, LoggingUpdateHandler())
+        logger.warning(
+            "Telegram token set but EXPENSES_TELEGRAM_CHAT_ID is not — notifications "
+            "are logged and the interactive workflow is disabled. Send /start to the "
+            "bot to learn your chat id."
+        )
+
+    # --- Processor (TR-2) ---
+    processor = TransactionProcessor(engine, sheets, state, notifier, unknown_handler)
+    if orchestrator is not None:
+        orchestrator.set_reprocess(processor.handle)  # drain queue through the full pipeline
 
     # --- Poller (TR-1) feeds the Processor; State is its early idempotency guard ---
     poller = TransactionPoller(

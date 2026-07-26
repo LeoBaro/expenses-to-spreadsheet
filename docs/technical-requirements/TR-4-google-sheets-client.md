@@ -87,8 +87,9 @@ coordinates.
 - **Read (feeds TR-5):** `SupportRow(primary, secondary, substrings: list[str])` and
   `list[str]` ignore patterns.
 - **Write (from TR-2):** `ExpenseRow(name, date, amount: Decimal, primary, secondary)`
-  → month sheet columns A–E (FR-12); and `add_merchant_substring(primary, secondary,
-  substring)` (FR-11).
+  → month sheet columns A–E (FR-12); `add_merchant_substring(primary, secondary,
+  substring)` (FR-11); and `add_ignore_pattern(pattern)` → append to the Ignore sheet
+  (FR-8.4), stored lowercase, case-insensitive dedupe (mirrors FR-11).
 
 ## Interfaces
 - Inbound: Cache Manager (TR-5) for reads; Transaction Processor (TR-2) for writes.
@@ -114,7 +115,7 @@ coordinates.
 Package [`src/expenses/sheets/`](../../src/expenses/sheets/):
 - [`client.py`](../../src/expenses/sheets/client.py) — service-account auth + async `GoogleSheetsClient` facade (`asyncio.to_thread`).
 - [`reader.py`](../../src/expenses/sheets/reader.py) — Support + Ignore reads.
-- [`writer.py`](../../src/expenses/sheets/writer.py) — expense append (FR-12) + Column C read-modify-write (FR-11).
+- [`writer.py`](../../src/expenses/sheets/writer.py) — expense append (FR-12), Column C read-modify-write (FR-11), Ignore-sheet append (FR-8.4).
 - [`months.py`](../../src/expenses/sheets/months.py) · [`models.py`](../../src/expenses/sheets/models.py) · [`errors.py`](../../src/expenses/sheets/errors.py).
 - [`sheets_cli.py`](../../src/expenses/sheets_cli.py) — `expenses-sheets check`, read-only setup validation.
 
