@@ -1,6 +1,8 @@
 # TR-2. Transaction Processor
 
-> Status: Draft skeleton.
+> Status: **Automatic path implemented** (FR-1/4/5), unit-tested. The interactive
+> unknown-merchant workflow (FR-6→8) is a later slice — unknown transactions are
+> currently delegated to a placeholder handler.
 
 ## Traceability
 - Functional requirements: FR-1, FR-4, FR-5, FR-6 (orchestration of the processing flow)
@@ -66,13 +68,24 @@ external access. The round trip to the Bot (present options → relay selection)
 - Own the multi-step **workflow state** (which transaction, current step, partial selections); the Bot holds only callback-routing (see TR-6).
 
 ## Design Decisions
-_TBD._ Candidate topics:
-- **Ordering contract:** write expense (TR-4) *then* persist processed id (TR-7); define behavior on partial failure (crash-consistency for FR-13).
-- Error handling / retry policy for transient Sheets or Telegram failures.
-- Concurrency: can multiple transactions be in flight at once, and does that interact with conversation state (TR-6)?
+- **Ordering (decided, DD-3):** for a merchant match → **write expense (TR-4) →
+  `mark_processed` (TR-7) → notify (FR-5)**. Mark immediately after the write minimizes
+  the duplicate window; a crash between write and mark re-processes next cycle (accepted
+  at-least-once). For an ignore match → `mark_processed` only (no write, no notify, FR-4).
+- **Notification (decided):** FR-5 notification is **best-effort** — sent *after* mark,
+  and a failure is logged and swallowed (an informational message must never block the
+  flow or cause reprocessing).
+- **Unknown handling (this slice):** delegated to an `UnknownTransactionHandler` port;
+  the placeholder logs and does **not** mark processed (revisited when FR-6→8 lands), and
+  does not notify (avoids re-spamming each poll). The real interactive workflow replaces it.
+- **Decoupling:** the Processor depends only on Protocols (`Engine`, `ExpenseWriter`,
+  `ProcessedState`, `Notifier`, `UnknownTransactionHandler`) satisfied by TR-3/4/7/6.
 
 ## Data Model / Contracts
-_TBD._ Consumes internal `Transaction` (TR-1); produces expense-write requests (TR-4) and notification requests (TR-6).
+Implements the poller's `TransactionSink` — `async handle(transaction: Transaction)`.
+Consumes the internal `Transaction` (TR-1); on a match produces an `ExpenseRow` (TR-4)
+and a formatted FR-5 notification string. Ports are defined in
+`expenses/processor/ports.py`.
 
 ## Interfaces
 - Inbound: `Transaction` from Poller (TR-1); user selections relayed by the Bot (TR-6).
@@ -86,5 +99,16 @@ _TBD._ Consumes internal `Transaction` (TR-1); produces expense-write requests (
 - Assumes a notification failure (FR-5) should not block marking processed — needs confirmation.
 
 ## Open Questions
-- If the expense write succeeds but marking processed fails, what is the recovery expectation?
-- Should automatic-categorization notification failures be retried, logged, or ignored?
+- ✅ Expense write succeeds but mark fails → transaction is reprocessed next cycle (at-least-once, DD-3); a duplicate row is the accepted, easily-corrected outcome.
+- ✅ Notification failures → logged and ignored (best-effort).
+
+## Implementation (automatic path)
+Package [`src/expenses/processor/`](../../src/expenses/processor/):
+- [`processor.py`](../../src/expenses/processor/processor.py) — `TransactionProcessor.handle()`: processed-check → ignore → merchant → auto-categorize / delegate; `format_categorized()` (FR-5 text).
+- [`ports.py`](../../src/expenses/processor/ports.py) — the five Protocols + `LoggingNotifier` / `LoggingUnknownHandler` defaults.
+- [`notifier.py`](../../src/expenses/processor/notifier.py) — `TelegramNotifier` adapter (bot → Notifier port).
+
+Tests in [`tests/test_processor.py`](../../tests/test_processor.py) cover all four
+branches (already-processed, ignore, merchant match, unknown), the write→mark ordering,
+and best-effort notification. **Not yet implemented:** the FR-6→8 interactive workflow
+and its Processor-owned conversation state.
