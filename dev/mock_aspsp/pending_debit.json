@@ -1,0 +1,17 @@
+{
+  "entry_reference": "p1a2b",
+  "transaction_amount": {
+    "currency": "EUR",
+    "amount": "7.50"
+  },
+  "creditor": {
+    "name": "Väinö Nieminen"
+  },
+  "credit_debit_indicator": "DBIT",
+  "status": "PDNG",
+  "booking_date": "2026-07-26",
+  "value_date": "2026-07-26",
+  "remittance_information": [
+    "Väinö Nieminen-DBIT-7.50-p1a2b"
+  ]
+}

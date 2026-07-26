@@ -1,0 +1,17 @@
+{
+  "entry_reference": "inc001",
+  "transaction_amount": {
+    "currency": "EUR",
+    "amount": "1500.00"
+  },
+  "creditor": {
+    "name": "ACME SRL"
+  },
+  "credit_debit_indicator": "CRDT",
+  "status": "BOOK",
+  "booking_date": "2026-07-25",
+  "value_date": "2026-07-24",
+  "remittance_information": [
+    "STIPENDIO ACME SRL"
+  ]
+}

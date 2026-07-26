@@ -1,0 +1,18 @@
+{
+  "transaction_id": "mock-tx-0001",
+  "entry_reference": "exp002",
+  "transaction_amount": {
+    "currency": "EUR",
+    "amount": "8.20"
+  },
+  "creditor": {
+    "name": "Coop"
+  },
+  "credit_debit_indicator": "DBIT",
+  "status": "BOOK",
+  "booking_date": "2026-07-25",
+  "value_date": "2026-07-24",
+  "remittance_information": [
+    "PAGAMENTO CARTA COOP FIRENZE"
+  ]
+}
