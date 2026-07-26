@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     # durable volume that survives restarts. Year-keying is a TR-0 concern (DD-4).
     state_file_path: Path = Path("state/processed_transactions.log")
 
+    # --- HTTP server (TR-0) ---
+    # The FastAPI app exposes only a health endpoint; the real work runs on the
+    # internal asyncio scheduler. Bind to loopback by default (single container).
+    server_host: str = "127.0.0.1"
+    server_port: int = Field(default=8000, ge=1, le=65535)
+
     # --- Telegram ---
     telegram_bot_token: str = ""
     # The single user's chat id (notifications target it). Discover it by sending

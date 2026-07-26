@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.115.0",
     "google-api-python-client>=2.198.0",
     "google-auth>=2.56.2",
     "httpx>=0.28.1",
@@ -15,9 +16,11 @@ dependencies = [
     "pydantic-settings>=2.14.2",
     "pyjwt[crypto]>=2.13.0",
     "python-telegram-bot>=22.8",
+    "uvicorn>=0.34.0",
 ]
 
 [project.scripts]
+expenses-serve = "expenses.bootstrap.cli:main"
 expenses-poll = "expenses.poller.cli:main"
 expenses-consent = "expenses.consent_cli:main"
 expenses-sheets = "expenses.sheets_cli:main"
