@@ -1,6 +1,11 @@
 # TR-4. Google Sheets Client
 
-> Status: Draft skeleton.
+> Status: Specified, **implemented, and fully live-validated (read + write)** against
+> the real spreadsheet. Read: `uv run expenses-sheets check` (Support: 158 rows / 16
+> primary categories parsed correctly). Write (FR-12): `uv run expenses-sheets
+> write-test` appended a row to the `Jul` sheet with the correct numeric amount and ISO
+> date. FR-11 (merchant substring append) is unit-tested; not yet exercised live to
+> avoid mutating the Support config sheet.
 
 ## Traceability
 - Functional requirements: FR-2 (load config), FR-11 (merchant rule persistence), FR-12 (expense persistence)
@@ -60,27 +65,59 @@ coordinates.
 - Never mutate the Support layout beyond Column C (architecture append-only principle).
 
 ## Design Decisions
-_TBD._ Candidate topics:
-- Client library and auth (service account) for Google Sheets.
-- Read strategy (batch ranges) to minimise API calls (NFR-5) and locate the target row for FR-11.
-- Column C update semantics: read-modify-write of the comma-separated list; whitespace/casing normalization for duplicate detection.
-- Month-name → sheet mapping (Jan…Dec) from booking date.
+- **Library & auth (decided):** official `google-api-python-client` + `google-auth`
+  with a **service account** (JSON key). The sync client is bridged to the async app
+  via `asyncio.to_thread` in the `GoogleSheetsClient` facade. The spreadsheet must be
+  **shared with the service-account `client_email`** (Editor) — a project IAM role is
+  not enough.
+- **Value formatting (decided, from the real sheet):** writes use `USER_ENTERED`;
+  **amount is sent as a numeric value** (locale-proof — a number is stored as a number,
+  displayed per the sheet's format) and **date as ISO `YYYY-MM-DD`** (the sheet's Date
+  column is ISO). Amounts are positive.
+- **FR-11 Column C (decided):** read `Support!A:C`, locate the `(Primary, Secondary)`
+  row (exact, trimmed), read-modify-write only that `C` cell. New substrings stored
+  **lowercase**; list joined with `", "`; duplicates rejected **case-insensitively**.
+- **Month mapping (decided):** hard-coded English `Jan…Dec` (not locale-dependent
+  `calendar`); missing month sheet → **fail loudly** (`SheetNotFoundError`).
+- **Read strategy:** Support (`A:C`) and Ignore (`A:A`) read directly. **Neither sheet
+  has a header row — every row is data** (so `"Revolut"` in the Ignore sheet is a real
+  pattern). No header-skipping logic.
 
 ## Data Model / Contracts
-_TBD._ Return shapes for Support/Ignore reads (feed TR-5 cache); write requests for merchant substring (FR-11) and expense row (FR-12, columns A–E per spreadsheet-structure).
+- **Read (feeds TR-5):** `SupportRow(primary, secondary, substrings: list[str])` and
+  `list[str]` ignore patterns.
+- **Write (from TR-2):** `ExpenseRow(name, date, amount: Decimal, primary, secondary)`
+  → month sheet columns A–E (FR-12); and `add_merchant_substring(primary, secondary,
+  substring)` (FR-11).
 
 ## Interfaces
-- Inbound: Cache Manager (TR-5) for reads; Transaction Processor (TR-2) / Telegram workflow (TR-6) for writes.
+- Inbound: Cache Manager (TR-5) for reads; Transaction Processor (TR-2) for writes.
+  (The Telegram Bot never calls this — the Processor orchestrates, per architecture.md.)
 - Outbound: Google Sheets API.
 
 ## Dependencies
 - TR-0 (spreadsheet id, credentials).
 
 ## Risks & Assumptions
+- **Service-account sharing:** the spreadsheet must be shared with the SA `client_email`; the project IAM Editor role does **not** grant document access (403 otherwise).
 - Assumes the fixed layout in spreadsheet-structure.md and that the app must not alter it.
-- Concurrent writes vs. read-modify-write on Column C could race (single-user mitigates but should be stated).
-- Sheet name is the abbreviated English month regardless of locale.
+- **No header rows** on Support or Ignore (confirmed by the user); every row is data.
+- Concurrent writes vs. read-modify-write on Column C could race (single-user mitigates but stated).
+- `float(Decimal)` is used to send the amount as a JSON number; fine for 2-decimal currency display, but note it is not exact arithmetic (the Sheet stores the display value, not a running balance).
 
-## Open Questions
-- Duplicate detection for FR-11: case- and whitespace-insensitive comparison?
-- Behavior if the target month sheet does not exist.
+## Open Questions (resolved)
+- ✅ **Duplicate detection (FR-11):** case-insensitive + trimmed.
+- ✅ **Missing month sheet (FR-12):** fail loudly (`SheetNotFoundError`).
+- ✅ **Amount/date/locale:** the real sheet uses ISO dates and dot-decimal amounts; amount written numeric, date written ISO (see Design Decisions).
+
+## Implementation
+Package [`src/expenses/sheets/`](../../src/expenses/sheets/):
+- [`client.py`](../../src/expenses/sheets/client.py) — service-account auth + async `GoogleSheetsClient` facade (`asyncio.to_thread`).
+- [`reader.py`](../../src/expenses/sheets/reader.py) — Support + Ignore reads.
+- [`writer.py`](../../src/expenses/sheets/writer.py) — expense append (FR-12) + Column C read-modify-write (FR-11).
+- [`months.py`](../../src/expenses/sheets/months.py) · [`models.py`](../../src/expenses/sheets/models.py) · [`errors.py`](../../src/expenses/sheets/errors.py).
+- [`sheets_cli.py`](../../src/expenses/sheets_cli.py) — `expenses-sheets check`, read-only setup validation.
+
+Tests in [`tests/`](../../tests/) cover reader parsing (header/blank handling), expense
+append (numeric amount, ISO date, missing-sheet failure), FR-11 append + case-insensitive
+dedupe + unknown-category error, and month mapping.

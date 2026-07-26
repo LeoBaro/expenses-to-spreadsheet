@@ -26,7 +26,7 @@ flowchart TB
     subgraph TR5["TR-5 · Cache Manager"]
         direction TB
         BUILDER["Builder / refresh<br/><i>(re)build on startup &<br/>after Support / Ignore writes (FR-14)</i>"]
-        STORE["In-memory store<br/><i>categories, merchant-rule index,<br/>ignore patterns</i>"]
+        STORE["In-memory store<br/><i>categories, merchant-rule index,<br/>ignore</i>"]
     end
 
     SHEETS["Google Sheets Client<br/>(TR-4)"]

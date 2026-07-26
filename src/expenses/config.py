@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     # Expected account currency; mismatches are surfaced, not silently accepted.
     expected_currency: str = "EUR"
 
+    # --- Google Sheets ---
+    google_credentials_path: Path | None = None
+    # The current-year spreadsheet id (from the sheet URL). Not a secret.
+    google_spreadsheet_id: str = ""
+    support_sheet_name: str = "Support"
+    ignore_sheet_name: str = "Ignore"
+
     def private_key(self) -> str:
         if self.eb_private_key_path is None:
             raise ValueError("EXPENSES_EB_PRIVATE_KEY_PATH is not configured")

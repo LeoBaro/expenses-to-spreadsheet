@@ -31,6 +31,9 @@ Example:
 | Housing | Gas | edison |
 | Groceries | Groceries general | coop, conad, carrefour |
 
+- The sheet has **no header row** — row 1 is already the first data row. (The
+  "Primary / Secondary / Merchant Substrings" line above is only column labelling for
+  this document.)
 - The Merchant Substrings cell (Column C) contains a comma-separated list of substrings.
 - Empty cells indicate that no merchant rule has yet been defined for that category.
 - Each Primary Category occupies a fixed block of rows.
@@ -77,4 +80,10 @@ Each monthly sheet contains the following columns:
 | C | Amount |
 | D | Primary |
 | E | Secondary |
+
+**Layout note:** the top of each monthly sheet holds a **summary/budget block**
+(category totals) occupying roughly the first ~44 rows; the **transaction log is
+appended below it**. New expenses are appended after the last existing row (the Sheets
+API `values.append` table-detection lands them there — e.g. an otherwise-empty month
+gets its first transaction at ~row 45).
 
