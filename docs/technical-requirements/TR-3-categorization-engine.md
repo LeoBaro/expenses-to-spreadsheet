@@ -1,6 +1,6 @@
 # TR-3. Categorization Engine
 
-> Status: Draft skeleton.
+> Status: Specified & **implemented** (unit-tested; pure logic, no I/O).
 
 ## Traceability
 - Functional requirements: FR-3 (merchant matching), FR-4 (ignore matching), FR-5 (assignment), FR-9 (substring suggestion), FR-10 (ignore-pattern suggestion)
@@ -61,13 +61,28 @@ the Processor**.
   ownership boundary flagged in [TR-5](TR-5-cache-manager.md).
 
 ## Design Decisions
-_TBD._ Candidate topics:
-- Tie-breaking when two matched substrings have equal length (FR-3 undefined).
-- Candidate ordering/dedup rules presented to the user (FR-9/10).
-- Where the matching structures live (this engine vs. TR-5) and the lookup complexity target (NFR-5).
+- **FR-3 tie-break (decided):** longest matching substring wins; equal-length ties
+  resolved by **sheet order** (first-defined), by scanning entries in order and only
+  replacing on a strictly-longer match.
+- **Candidate tokenization (decided):** split on whitespace, strip surrounding
+  punctuation, uppercase; then drop tokens <2 chars and tokens containing **any digit**
+  (dates, amounts, IBANs, card refs, transaction codes). Dedupe, preserve order.
+- **Stop words (decided):** a **config list** (`stopwords.py`, `DEFAULT_STOP_WORDS`),
+  injected into the Engine as a `set[str]`; edit-in-place, migratable to a Sheet later
+  with no Engine change. Tuned to Italian bank phrasing.
+- **FR-9 exclusion scope (decided): global** — a candidate is excluded if it's already
+  a merchant substring in **any** rule (not just other categories).
+- **Lookup structures (decided):** the Engine iterates the cache snapshot directly
+  (≈34 rules) — no pre-built index. In-memory, so NFR-5 (no API calls) holds.
 
 ## Data Model / Contracts
-_TBD._ Consumes cache snapshots (TR-5); returns match results (category pair) and candidate lists (`list[str]`). Stateless — no I/O.
+Stateless; reads the current `CacheSnapshot` (TR-5) on each call. API:
+- `match_merchant(description) -> MatchResult | None` — `MatchResult(primary, secondary, substring)` (FR-3/5).
+- `find_ignore_match(description) -> str | None` — the matched pattern (FR-4).
+- `list_primaries() -> list[str]`, `list_secondaries(primary) -> list[str]` (FR-7).
+- `suggest_merchant_substrings(description) -> list[str]` (FR-9).
+- `suggest_ignore_patterns(description) -> list[str]` (FR-10).
+Constructed with a `CacheView` Protocol (the Cache Manager) + `stop_words`.
 
 ## Interfaces
 - Inbound: called by the Transaction Processor (TR-2) — for matching/assignment (FR-3/4/5), candidate generation (FR-9/10), and category listing (FR-7). The Telegram Bot (TR-6) does **not** call the Engine directly (the Processor orchestrates).
@@ -77,9 +92,24 @@ _TBD._ Consumes cache snapshots (TR-5); returns match results (category pair) an
 - TR-5 (cache), TR-0 (stop words configuration).
 
 ## Risks & Assumptions
-- Assumes description tokenization on single spaces is sufficient (FR-9 example implies this).
-- "Words already used by another merchant rule" (FR-9) scope must be defined: all rules, or same category?
+- Whitespace tokenization + digit/stop-word filtering handles the real Italian
+  descriptions well (validated against sample rows); the stop-word list will need
+  occasional tuning as new noise words appear.
+- Substring *containment* matching (FR-3) can over-match (e.g. a rule `very` matches
+  `delivery`); this is per-spec and mitigated by preferring longer substrings.
 
-## Open Questions
-- Equal-length match tie-break rule?
-- Does substring exclusion in FR-9 consider every merchant rule globally or only other categories?
+## Open Questions (resolved)
+- ✅ Equal-length tie-break → sheet order.
+- ✅ FR-9 exclusion scope → global.
+
+## Implementation
+Package [`src/expenses/categorization/`](../../src/expenses/categorization/):
+- [`engine.py`](../../src/expenses/categorization/engine.py) — `CategorizationEngine` + `CacheView` Protocol.
+- [`models.py`](../../src/expenses/categorization/models.py) — `MatchResult`.
+- [`tokens.py`](../../src/expenses/categorization/tokens.py) — candidate tokenization.
+- [`stopwords.py`](../../src/expenses/categorization/stopwords.py) — `DEFAULT_STOP_WORDS` (the config list).
+
+Tests: [`test_engine_matching.py`](../../tests/test_engine_matching.py),
+[`test_engine_suggestions.py`](../../tests/test_engine_suggestions.py),
+[`test_tokens.py`](../../tests/test_tokens.py) — cover longest-match/tie-break,
+ignore matching, category listing, and suggestion filtering against real sample rows.
