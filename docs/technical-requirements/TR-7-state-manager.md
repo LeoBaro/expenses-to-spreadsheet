@@ -1,6 +1,6 @@
 # TR-7. State Manager
 
-> Status: Specified (v1).
+> Status: Specified & **implemented** (unit-tested).
 
 ## Traceability
 - Functional requirements: FR-13 (processed transaction state / idempotency)
@@ -111,8 +111,8 @@ Fully unreadable files fail loudly (misconfiguration), not silently.
 ## Data Model / Interface Contract
 
 Persisted: a set of provider transaction identifiers (the `Transaction.id` owned by
-TR-1). Record format is one identifier per line _(exact serialization TBD — plain id
-vs. id + timestamp for debuggability)_.
+TR-1). **Record format (decided): the plain id, one per line** — trivial replay into a
+set, and a partial trailing line is a harmless bogus id (DD-5).
 
 Public API (conceptual):
 
@@ -140,7 +140,7 @@ Public API (conceptual):
 ## Risks & Assumptions
 - **Assumption:** the container has a **durable, persistent volume** for the state file that survives restarts/redeploys (NFR-7). If storage is ephemeral, idempotency is lost across restarts and the whole guarantee collapses — this must be ensured at deployment.
 - **Assumption:** `Transaction.id` is stable and unique. Per the [TR-1 finding](TR-1-transaction-poller.md#finding--provider-transaction-id-is-not-always-stable-affects-tr-7), some banks omit the provider `transaction_id`, in which case the poller supplies a **derived hash** (`id_is_derived = true`). A derived id is only as stable as the fields it hashes; if the bank's payload for the "same" transaction varies between polls, dedup fails and a duplicate expense can be written. **Mock-validated (2026-07-26):** against the Enable Banking Mock ASPSP — which never returns a `transaction_id` — derived ids were identical across repeated polls, so the derived-id path is the *primary* path in testing and is empirically stable there. This must still be re-validated against production Revolut.
-- **Risk:** concurrent `mark_processed` calls (poller cycle + Telegram callback) must serialize appends and set mutations to avoid interleaved/corrupt writes. Requires a concurrency guard.
+- **Concurrency (resolved):** `mark_processed`/`is_processed` are **synchronous**, so within the single asyncio event loop a call runs to completion without yielding — no interleaving, no lock needed. (A lock would only be required if called from multiple OS threads, which the design does not do.)
 - **Accepted risk:** the at-least-once duplicate window in DD-3.
 
 ---
@@ -148,6 +148,16 @@ Public API (conceptual):
 ## Open Questions
 1. **Derived-id composition** — when no provider `transaction_id` exists, should the id be the raw `entry_reference` (present in the Mock ASPSP data, e.g. `p1a2b`) or the current hash of `entry_reference` + date + amount + currency + direction + description? Raw is simpler and more stable if the description shifts; the hash is more collision-resistant. Decide once Revolut's payload is known.
 2. Confirm the at-least-once window (DD-3) is acceptable, or do you want a stronger guarantee (e.g. intent-marker / reconciliation)?
-3. Record serialization: bare identifier, or identifier + timestamp/description for human debugging?
-4. Year-rollover handling (DD-4): auto-detect current year and switch files, or restart-per-year?
+3. ✅ Record serialization → bare identifier, one per line.
+4. Year-rollover handling (DD-4): auto-detect current year and switch files, or restart-per-year? (Owned by TR-0; `StateManager` just takes a path.)
 5. Confirm the deployment provides a durable volume for the state file.
+
+## Implementation
+[`src/expenses/state/manager.py`](../../src/expenses/state/manager.py) — `StateManager(path)`
+with `load()`, `is_processed(id)`, `mark_processed(id)`. Synchronous; append + `os.fsync`
+before the in-memory set update (DD-2); creates the parent directory; tolerates missing
+file and blank/partial lines (DD-5). Config: `EXPENSES_STATE_FILE_PATH` (default
+`state/processed_transactions.log`, gitignored). Satisfies the poller's `ProcessedStore`
+port. Tests in [`tests/test_state_manager.py`](../../tests/test_state_manager.py) cover
+persistence across instances, idempotent marking, immediate append, and corruption
+tolerance.
