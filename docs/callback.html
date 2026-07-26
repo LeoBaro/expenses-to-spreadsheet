@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Authorization callback — Expenses to Spreadsheet</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { max-width: 42rem; margin: 3rem auto; padding: 0 1.2rem;
+           font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    h1 { font-size: 1.4rem; }
+    .box { border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+           border-radius: 8px; padding: 1rem; margin: 1.2rem 0; }
+    code, #code { font-family: ui-monospace, SFMono-Regular, monospace; word-break: break-all; }
+    #code { font-size: 1.05rem; }
+    button { font: inherit; padding: .5rem .9rem; border-radius: 6px; cursor: pointer;
+             border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+             background: color-mix(in srgb, currentColor 8%, transparent); color: inherit; }
+    .muted { opacity: .7; font-size: .92rem; }
+    .none { opacity: .6; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>Bank authorization received</h1>
+  <p>You can close this tab and return to the terminal. Paste the value below (or the full
+  address-bar URL) back into the <code>expenses-consent authorize</code> prompt.</p>
+
+  <div class="box">
+    <div class="muted">Authorization code</div>
+    <div id="code" class="none">no <code>code</code> parameter found in this URL</div>
+    <p style="margin:.8rem 0 0"><button id="copy" hidden>Copy code</button></p>
+  </div>
+
+  <p class="muted">This is a static page — it stores nothing and sends nothing anywhere.
+  The code is read only from your browser's address bar.</p>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const code = params.get("code");
+    const el = document.getElementById("code");
+    const btn = document.getElementById("copy");
+    if (code) {
+      el.textContent = code;
+      el.classList.remove("none");
+      btn.hidden = false;
+      btn.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(code); btn.textContent = "Copied ✓"; }
+        catch { btn.textContent = "Copy failed — select manually"; }
+      });
+    }
+  </script>
+</body>
+</html>

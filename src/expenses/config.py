@@ -29,9 +29,11 @@ class Settings(BaseSettings):
     # Server-side status filter; "BOOK" returns only settled transactions.
     eb_transaction_status: str = "BOOK"
     # Whitelisted redirect URL registered with the application; used by the
-    # one-time consent flow (expenses-consent). For a manual bootstrap a
-    # non-served localhost URL is fine — you copy the code out of the browser.
-    eb_redirect_url: str = "http://localhost:8000/callback"
+    # one-time consent flow (expenses-consent). Production Enable Banking requires
+    # an HTTPS, publicly-resolvable URL (localhost/http are rejected). This static
+    # GitHub Pages page just displays the ?code= for you to copy back; it serves and
+    # stores nothing. Must match a redirect URL whitelisted in the EB application.
+    eb_redirect_url: str = "https://leobaro.github.io/expenses-to-spreadsheet/callback.html"
 
     # --- Polling ---
     poll_interval_seconds: int = Field(default=900, ge=30)
