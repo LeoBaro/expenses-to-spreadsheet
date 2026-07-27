@@ -99,6 +99,11 @@ external access. The round trip to the Bot (present options → relay selection)
   **AND-combination** stored joined by `+` (TR-3). Toggles keep the option order/indices
   stable across re-renders, so a delayed tap can never map to the wrong word. This is why
   the Bot presenter also exposes `edit_options` (in-place re-render).
+- **Rule creation is optional — Skip (decided, DD-8):** the merchant step always offers a
+  `f"{step}:skip"` button (independent of any selection). Skip categorizes *this*
+  transaction with the chosen Primary/Secondary but writes **no** merchant rule and skips
+  the cache refresh — for expenses the user wants filed without a reusable rule. It is the
+  same terminal as the empty-candidate fallback (`substring=None`), just user-initiated.
 - **Empty-candidate fallbacks (decided):** if no merchant substrings can be suggested
   (FR-9), the expense is still recorded with the chosen category (the user's work isn't
   lost) but **no rule** is created; if no ignore patterns can be suggested (FR-10), the

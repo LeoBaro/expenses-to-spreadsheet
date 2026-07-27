@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from expenses.domain.transaction import Direction, Transaction, TransactionStatus
 from expenses.processor.conversation import ConversationOrchestrator, Step
-from expenses.telegram_bot.keyboards import DONE_ACTION
+from expenses.telegram_bot.keyboards import DONE_ACTION, SKIP_ACTION
 
 CHAT = 42
 
@@ -84,17 +84,22 @@ class _Presenter:
         self.options = []  # (text, options, tag) — appended on both send and edit
         self.messages = []  # (chat_id, text)
         self.last_done_label = None
+        self.last_skip_label = None
 
     async def send_message(self, chat_id, text):
         self.messages.append((chat_id, text))
 
-    async def send_options(self, chat_id, text, options, *, tag, done_label=None):
+    async def send_options(self, chat_id, text, options, *, tag, done_label=None, skip_label=None):
         self.options.append((text, list(options), tag))
         self.last_done_label = done_label
+        self.last_skip_label = skip_label
 
-    async def edit_options(self, chat_id, message_id, text, options, *, tag, done_label=None):
+    async def edit_options(
+        self, chat_id, message_id, text, options, *, tag, done_label=None, skip_label=None
+    ):
         self.options.append((text, list(options), tag))
         self.last_done_label = done_label
+        self.last_skip_label = skip_label
 
     @property
     def last(self):
@@ -118,6 +123,12 @@ async def _tap_done(orch, presenter):
     """Tap the Done button of a multi-select prompt."""
     _, _, tag = presenter.last
     await orch.on_callback(CHAT, message_id=1, data=f"{tag}:{DONE_ACTION}", callback_id="cb")
+
+
+async def _tap_skip(orch, presenter):
+    """Tap the Skip button of the merchant prompt."""
+    _, _, tag = presenter.last
+    await orch.on_callback(CHAT, message_id=1, data=f"{tag}:{SKIP_ACTION}", callback_id="cb")
 
 
 # --- happy paths ---------------------------------------------------------------
@@ -144,6 +155,7 @@ async def test_categorize_happy_path():
     await _tap(orch, pres, 0)  # Groceries → enters MERCHANT multi-select
     assert pres.last[1:] == (["STARBUCKS", "MILANO"], Step.MERCHANT.value)
     assert pres.last_done_label is None  # no Done until a word is picked
+    assert pres.last_skip_label is not None  # Skip is always available
 
     await _tap(orch, pres, 0)  # add STARBUCKS
     assert pres.last[1] == ["✓ STARBUCKS", "MILANO"]  # checkmarked
@@ -180,6 +192,45 @@ async def test_merchant_and_combination_builds_plus_rule():
 
     # AND-combination stored joined by '+'.
     assert sheets.substrings == [("Transport", "Parking", "APCOA+PARCHEGGIO")]
+    assert len(sheets.expenses) == 1
+    assert state.is_processed("tx-1")
+
+
+async def test_merchant_skip_categorizes_without_a_rule():
+    engine = _Engine(
+        primaries=["Food"], secondaries={"Food": ["Groceries"]}, merchant=["STARBUCKS", "MILANO"]
+    )
+    orch, sheets, cache, state, pres = _make(engine)
+
+    await orch.handle_unknown(_txn("tx-1"))
+    await _tap(orch, pres, 0)  # Categorize
+    await _tap(orch, pres, 0)  # Food
+    await _tap(orch, pres, 0)  # Groceries → MERCHANT (candidates present)
+    await _tap_skip(orch, pres)  # skip rule creation
+
+    assert sheets.substrings == []  # no rule created
+    assert cache.refreshed == 0  # nothing written to Support
+    assert len(sheets.expenses) == 1  # expense still recorded with chosen category
+    assert sheets.expenses[0].primary == "Food" and sheets.expenses[0].secondary == "Groceries"
+    assert state.is_processed("tx-1")
+    assert orch._active is None
+
+
+async def test_merchant_skip_available_even_after_selecting_words():
+    engine = _Engine(
+        primaries=["Food"], secondaries={"Food": ["Groceries"]}, merchant=["STARBUCKS", "MILANO"]
+    )
+    orch, sheets, cache, state, pres = _make(engine)
+
+    await orch.handle_unknown(_txn("tx-1"))
+    await _tap(orch, pres, 0)  # Categorize
+    await _tap(orch, pres, 0)  # Food
+    await _tap(orch, pres, 0)  # Groceries
+    await _tap(orch, pres, 0)  # select STARBUCKS
+    assert pres.last_done_label is not None and pres.last_skip_label is not None
+    await _tap_skip(orch, pres)  # skip anyway → no rule despite a selection
+
+    assert sheets.substrings == []
     assert len(sheets.expenses) == 1
     assert state.is_processed("tx-1")
 

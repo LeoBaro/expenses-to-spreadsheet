@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from expenses.telegram_bot.keyboards import DONE_ACTION, options_keyboard
+from expenses.telegram_bot.keyboards import DONE_ACTION, SKIP_ACTION, options_keyboard
 
 
 def test_one_button_per_option_stacked():
@@ -37,3 +37,21 @@ def test_done_label_appends_a_confirm_button():
 def test_no_done_button_without_label():
     markup = options_keyboard(["A", "B"], tag="mer")
     assert len(markup.inline_keyboard) == 2  # no Done row
+
+
+def test_done_and_skip_buttons_appended_in_order():
+    markup = options_keyboard(
+        ["APCOA", "PARCHEGGIO"], tag="mer", done_label="✓ Done", skip_label="⏭ Skip"
+    )
+    rows = markup.inline_keyboard
+    assert len(rows) == 4  # two options + Done + Skip
+    assert rows[-2][0].callback_data == f"mer:{DONE_ACTION}"
+    assert rows[-1][0].text == "⏭ Skip"
+    assert rows[-1][0].callback_data == f"mer:{SKIP_ACTION}"
+
+
+def test_skip_without_done():
+    markup = options_keyboard(["A", "B"], tag="mer", skip_label="⏭ Skip")
+    rows = markup.inline_keyboard
+    assert len(rows) == 3  # two options + Skip (no Done)
+    assert rows[-1][0].callback_data == f"mer:{SKIP_ACTION}"

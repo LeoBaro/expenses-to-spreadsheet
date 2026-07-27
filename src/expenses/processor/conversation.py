@@ -39,7 +39,7 @@ from expenses.categorization.engine import AND_SEPARATOR
 from expenses.domain.transaction import Transaction
 from expenses.processor.ports import ProcessedState
 from expenses.sheets.models import ExpenseRow
-from expenses.telegram_bot.keyboards import DONE_ACTION
+from expenses.telegram_bot.keyboards import DONE_ACTION, SKIP_ACTION
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,10 @@ class Step(str, Enum):
 
 _ACTION_CATEGORIZE = "Categorize"
 _ACTION_IGNORE = "Ignore"
+
+# Merchant step: label for the button that categorizes the expense without creating a
+# reusable merchant rule (the user just wants this one filed).
+_MERCHANT_SKIP_LABEL = "⏭ Skip — categorize without a rule"
 
 
 @runtime_checkable
@@ -90,7 +94,14 @@ class Presenter(Protocol):
 
     async def send_message(self, chat_id: int, text: str) -> None: ...
     async def send_options(
-        self, chat_id: int, text: str, options: list[str], *, tag: str, done_label: str | None = None
+        self,
+        chat_id: int,
+        text: str,
+        options: list[str],
+        *,
+        tag: str,
+        done_label: str | None = None,
+        skip_label: str | None = None,
     ) -> None: ...
     async def edit_options(
         self,
@@ -101,6 +112,7 @@ class Presenter(Protocol):
         *,
         tag: str,
         done_label: str | None = None,
+        skip_label: str | None = None,
     ) -> None: ...
 
 
@@ -265,7 +277,13 @@ class ConversationOrchestrator:
 
     async def _handle_merchant(self, session: Session, arg: str, message_id: int) -> bool:
         """Additive multi-select (FR-7.3/4): tapping a word toggles it into the rule;
-        Done saves the AND-combination of the selected words."""
+        Done saves the AND-combination of the selected words; Skip categorizes without
+        creating any rule."""
+        if arg == SKIP_ACTION:
+            # Record the expense with the chosen category, but no reusable rule (FR-7.4
+            # is optional — the user may just want this one filed).
+            await self._finish_categorize(session, substring=None)
+            return True
         if arg == DONE_ACTION:
             if not session.selected:
                 return False  # Done isn't offered until ≥1 word is picked; ignore a stray tap
@@ -320,14 +338,15 @@ class ConversationOrchestrator:
         session.step = Step.MERCHANT
         session.options = candidates
         session.selected = []
-        # First render: no Done button yet (nothing selected). Subsequent taps edit this
-        # same message in place via _render_merchant.
+        # First render: Skip is always available; Done appears only once ≥1 word is
+        # picked. Subsequent taps edit this same message in place via _render_merchant.
         await self._presenter.send_options(
             self._chat_id,
             self._merchant_text(session),
             self._merchant_labels(session),
             tag=Step.MERCHANT.value,
             done_label=None,
+            skip_label=_MERCHANT_SKIP_LABEL,
         )
 
     async def _render_merchant(self, session: Session, message_id: int) -> None:
@@ -342,6 +361,7 @@ class ConversationOrchestrator:
             self._merchant_labels(session),
             tag=Step.MERCHANT.value,
             done_label=done_label,
+            skip_label=_MERCHANT_SKIP_LABEL,
         )
 
     def _merchant_labels(self, session: Session) -> list[str]:
@@ -353,8 +373,11 @@ class ConversationOrchestrator:
         header = f"{session.primary} / {session.secondary}"
         if session.selected:
             rule = AND_SEPARATOR.join(w.lower() for w in session.selected)
-            return f"{header}\nRule so far: {rule}\nTap words to add/remove, then Done."
-        return f"{header}\nTap the word(s) that identify this merchant, then Done."
+            return f"{header}\nRule so far: {rule}\nTap words to add/remove, then Done — or Skip."
+        return (
+            f"{header}\nTap the word(s) that identify this merchant, then Done — "
+            "or Skip to categorize this one without a rule."
+        )
 
     async def _ask_ignore_pattern(self, session: Session) -> None:
         candidates = self._engine.suggest_ignore_patterns(session.transaction.description)

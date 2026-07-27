@@ -92,15 +92,25 @@ class ExpenseBot:
         await self._app.bot.send_message(chat_id, text)
 
     async def send_options(
-        self, chat_id: int, text: str, options: list[str], *, tag: str = "", done_label: str | None = None
+        self,
+        chat_id: int,
+        text: str,
+        options: list[str],
+        *,
+        tag: str = "",
+        done_label: str | None = None,
+        skip_label: str | None = None,
     ) -> None:
         """Send a prompt with an inline keyboard of choices (FR-6/7/8).
 
         ``tag`` identifies the workflow step; each button's callback_data is
         ``f"{tag}:{index}"`` so the Processor can map a tap back to the option.
-        ``done_label``, when set, appends a confirm button (multi-select steps)."""
+        ``done_label``/``skip_label``, when set, append confirm / skip buttons
+        (multi-select steps)."""
         await self._app.bot.send_message(
-            chat_id, text, reply_markup=options_keyboard(options, tag=tag, done_label=done_label)
+            chat_id,
+            text,
+            reply_markup=options_keyboard(options, tag=tag, done_label=done_label, skip_label=skip_label),
         )
 
     async def edit_options(
@@ -112,6 +122,7 @@ class ExpenseBot:
         *,
         tag: str = "",
         done_label: str | None = None,
+        skip_label: str | None = None,
     ) -> None:
         """Re-render an existing prompt in place (used by the additive multi-select step
         so toggling a word updates the same message instead of sending a new one)."""
@@ -120,7 +131,9 @@ class ExpenseBot:
                 text,
                 chat_id=chat_id,
                 message_id=message_id,
-                reply_markup=options_keyboard(options, tag=tag, done_label=done_label),
+                reply_markup=options_keyboard(
+                    options, tag=tag, done_label=done_label, skip_label=skip_label
+                ),
             )
         except BadRequest as exc:
             # "Message is not modified" (e.g. a duplicate tap) is harmless; log and move on.

@@ -9,13 +9,19 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 # Telegram limits callback_data to 64 bytes.
 CALLBACK_DATA_MAX = 64
 
-# Callback suffix for the "Done" button of a multi-select step (e.g. building an
-# AND-combination merchant rule). Distinct from the numeric option indices.
+# Callback suffixes for the non-option buttons of a multi-select step (e.g. building an
+# AND-combination merchant rule): DONE finalizes the selection, SKIP proceeds without
+# one. Both are distinct from the numeric option indices.
 DONE_ACTION = "done"
+SKIP_ACTION = "skip"
 
 
 def options_keyboard(
-    options: Sequence[str], *, tag: str = "", done_label: str | None = None
+    options: Sequence[str],
+    *,
+    tag: str = "",
+    done_label: str | None = None,
+    skip_label: str | None = None,
 ) -> InlineKeyboardMarkup:
     """One button per option, stacked vertically.
 
@@ -25,10 +31,11 @@ def options_keyboard(
     callback_data at 64 bytes. The receiver (the Processor's conversation
     orchestrator) maps the index back to the option it presented.
 
-    When ``done_label`` is given, a final confirm button is appended with
-    ``callback_data = f"{tag}:{DONE_ACTION}"`` — used by the additive multi-select
-    step to finalize a selection. Only the callback data is length-constrained; the
-    label text (which may preview the built rule) is not.
+    When given, ``done_label`` appends a confirm button
+    (``callback_data = f"{tag}:{DONE_ACTION}"``) and ``skip_label`` appends a skip
+    button (``f"{tag}:{SKIP_ACTION}"``) — used by the additive multi-select step to
+    finalize a selection or proceed without one. Only the callback data is
+    length-constrained; the label text (which may preview the built rule) is not.
     """
     rows = [
         [InlineKeyboardButton(text=option, callback_data=f"{tag}:{index}")]
@@ -36,4 +43,6 @@ def options_keyboard(
     ]
     if done_label is not None:
         rows.append([InlineKeyboardButton(text=done_label, callback_data=f"{tag}:{DONE_ACTION}")])
+    if skip_label is not None:
+        rows.append([InlineKeyboardButton(text=skip_label, callback_data=f"{tag}:{SKIP_ACTION}")])
     return InlineKeyboardMarkup(rows)

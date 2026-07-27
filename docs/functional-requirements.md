@@ -112,7 +112,9 @@ If the user selects **Categorize**, the application shall:
 1. Present the list of Primary Categories.
 2. After the Primary Category is selected, present the corresponding Secondary Categories.
 3. Generate candidate merchant substrings.
-4. Ask the user which substring should become the merchant rule.
+4. Ask the user which substring(s) should become the merchant rule. Creating a rule is
+   **optional**: the user may **Skip** and categorize only this transaction without
+   defining a reusable rule (steps 5–6 are then omitted).
 5. Update the Support sheet.
 6. Refresh the cache.
 7. Categorize the current transaction.

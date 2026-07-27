@@ -76,9 +76,11 @@ user.
   text. (Superseded the earlier `prefix + option` idea: category names can be long or
   contain colons and would risk the 64-byte cap; index encoding is always tiny and the
   Processor maps the index back to the option it presented. See TR-2 DD-6.) The merchant
-  step is an **additive multi-select**: `send_options`/`edit_options` take an optional
-  `done_label`, which appends a `f"{step}:done"` confirm button; tapping a word re-renders
-  the same message in place (`edit_options`) with a checkmark. See TR-2 DD-7.
+  step is an **additive multi-select**: `send_options`/`edit_options` take optional
+  `done_label` and `skip_label`, which append `f"{step}:done"` (confirm) and
+  `f"{step}:skip"` (categorize without a rule) buttons; tapping a word re-renders the same
+  message in place (`edit_options`) with a checkmark. Skip is always shown; Done appears
+  once ≥1 word is picked. See TR-2 DD-7/DD-8.
 - **Conversation state (decided elsewhere):** the *workflow* state (which transaction,
   step, partial selections) lives in the Processor (TR-2, `conversation.py`); the bot
   only routes a callback back to it.
@@ -94,9 +96,10 @@ The Bot itself is stateless beyond PTB's own machinery. The conversation/session
 `ConversationOrchestrator` (`Session`), not here. Contracts at the boundary:
 `TelegramUpdateHandler` (inbound: `on_callback(chat_id, message_id, data, callback_id)`,
 `on_message(chat_id, text)`) and the outbound presenter surface (`send_message`,
-`send_options(chat_id, text, options, *, tag, done_label=None)`, and
+`send_options(chat_id, text, options, *, tag, done_label=None, skip_label=None)`, and
 `edit_options(chat_id, message_id, …)` for in-place re-render), where each button's
-`callback_data` is `f"{tag}:{index}"` (or `f"{tag}:done"` for the multi-select confirm).
+`callback_data` is `f"{tag}:{index}"` (or `f"{tag}:done"` / `f"{tag}:skip"` for the
+multi-select confirm / skip actions).
 
 ## Interfaces
 - Inbound: Telegram updates (callbacks) from the user; notification + prompt requests from the Transaction Processor (TR-2).
