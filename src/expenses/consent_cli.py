@@ -53,14 +53,18 @@ def _extract_code(entered: str) -> str:
     return entered  # assume the user pasted the bare code
 
 
-async def _authorize(settings: Settings, aspsp_name: str, aspsp_country: str) -> None:
+async def _authorize(
+    settings: Settings, aspsp_name: str, aspsp_country: str, valid_days: int
+) -> None:
     auth, base_url = _build(settings)
     async with httpx.AsyncClient(timeout=30.0) as client:
         consent = ConsentClient(client, auth, base_url)
+        print(f"Requesting a {valid_days}-day consent (bank may cap this).")
         started = await consent.start_authorization(
             aspsp_name=aspsp_name,
             aspsp_country=aspsp_country,
             redirect_url=settings.eb_redirect_url,
+            valid_days=valid_days,
         )
         print("\n1) Open this URL in your browser and authenticate:\n")
         print(f"   {started['url']}\n")
@@ -91,13 +95,21 @@ def main() -> None:
     p_auth = sub.add_parser("authorize", help="start consent for a bank and print the account UID")
     p_auth.add_argument("--aspsp", required=True, help="bank name from the 'banks' list")
     p_auth.add_argument("--country", required=True, help="bank country (ISO 3166 two-letter code)")
+    p_auth.add_argument(
+        "--valid-days",
+        type=int,
+        default=None,
+        help="requested consent lifetime in days (default: EXPENSES_EB_CONSENT_VALID_DAYS). "
+        "Banks cap this (Revolut ~90); lower it if authorization is rejected.",
+    )
 
     args = parser.parse_args()
     settings = Settings()
     if args.command == "banks":
         asyncio.run(_banks(settings, args.country))
     elif args.command == "authorize":
-        asyncio.run(_authorize(settings, args.aspsp, args.country))
+        valid_days = args.valid_days if args.valid_days is not None else settings.eb_consent_valid_days
+        asyncio.run(_authorize(settings, args.aspsp, args.country, valid_days))
 
 
 if __name__ == "__main__":

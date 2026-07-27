@@ -178,20 +178,22 @@ idempotency guarantee is weaker and should be validated on first run.
 5. ✅ **Booking vs value date / timezone** — `booking_date`, date-only, UTC-assumed; value/transaction date as fallback.
 6. ✅ **Poll interval default** — 900s (15 min), configurable (`EXPENSES_POLL_INTERVAL_SECONDS`).
 
-### Still requires confirmation against the live account (run `uv run expenses-poll`)
-These are **bank-specific quirks of Revolut** and can only be confirmed against a
-**production** Enable Banking application. The **sandbox** environment exposes only
-the *Mock ASPSP* and a few bank test sandboxes — **Revolut is production-only** — and
-the mock returns whatever data is loaded into it, so it validates the pipeline and
-code paths but cannot answer these items:
-- **`transaction_id` presence** for Revolut — determines whether derived ids are in play (see finding above, TR-7).
-- **Single-currency** — confirm the account only ever returns `expected_currency`.
+### ✅ Confirmed against the live Revolut account (2026-07-27)
+Both remaining items were bank-specific quirks of Revolut, only answerable against a
+**production** Enable Banking application (sandbox exposes only the *Mock ASPSP* / bank
+test sandboxes — Revolut is production-only). A live production poll resolved them:
+- ✅ **`transaction_id` presence** — Revolut returns **no** `transaction_id`; 100% of
+  transactions use the derived-id fallback. Crucially, `entry_reference` **is** present
+  and stable per transaction, so derived ids are stable *and* distinct (a repeat poll
+  skipped 63 as already-processed — TR-7 idempotency holds on real data). Same-day rows
+  with identical amount/description stay distinct only because `entry_reference` is in
+  the seed. **Residual risk:** an empty `entry_reference` would let such rows collide
+  (not observed — every Revolut row carries one).
+- ✅ **Single-currency** — all transactions returned `EUR`; `mapping_errors=0`.
 
-**Onboarding note:** reaching production requires completing Enable Banking's go-live
-approval in the Control Panel. Until then, develop against *Mock ASPSP*
-(`uv run expenses-consent authorize --aspsp "Mock ASPSP" --country <XX>`) with
-hand-crafted transactions to exercise the adapter, settled-debit filter, and
-derived-id fallback.
+**Onboarding note (done):** production required completing Enable Banking's go-live
+registration, which needs HTTPS Privacy / Terms / redirect URLs — now hosted on GitHub
+Pages (`docs/{privacy,terms,callback}.html`, served from `main` `/docs`).
 
 ## Implementation
 Package [`src/expenses/poller/`](../../src/expenses/poller/):
@@ -217,5 +219,12 @@ transactions:
   transactions use derived ids; re-polling the same transactions produced byte-for-byte
   identical ids, i.e. the idempotency key is stable across cycles (input to TR-7).
 
-Not decidable on the mock (still needs production Revolut): whether Revolut returns a
-real `transaction_id`, and single-currency behaviour.
+## Production validation (Revolut, 2026-07-27)
+Live poll of a real Revolut account through a production Enable Banking application:
+- **No `transaction_id`** from Revolut → all transactions use derived ids; `entry_reference`
+  is present and stable, so a repeat poll correctly recognised **63** transactions as
+  already-processed (`skipped_processed=63`, `mapping_errors=0`) — derived-id idempotency
+  confirmed against real data.
+- **EUR-only**, and CRDT/DBIT mapping correct (Top-Ups / incoming "To EUR" credits
+  excluded as not-expense; only settled debits forwarded).
+- **`continuation_key` paging** works against Revolut's transaction endpoint.

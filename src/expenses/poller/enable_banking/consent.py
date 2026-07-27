@@ -40,7 +40,7 @@ class ConsentClient:
         aspsp_country: str,
         redirect_url: str,
         psu_type: str = "personal",
-        valid_days: int = 10,
+        valid_days: int = 90,
         state: str | None = None,
     ) -> dict[str, str]:
         """POST /auth — returns the URL to which the end user must be redirected."""

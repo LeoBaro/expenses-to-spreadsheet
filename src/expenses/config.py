@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # GitHub Pages page just displays the ?code= for you to copy back; it serves and
     # stores nothing. Must match a redirect URL whitelisted in the EB application.
     eb_redirect_url: str = "https://leobaro.github.io/expenses-to-spreadsheet/callback.html"
+    # Requested consent lifetime (access.valid_until) in days. PSD2 allows up to ~180,
+    # but each bank caps it (Revolut ~90). If `authorize` is rejected, lower this. The
+    # longer it is, the less often you re-run the interactive consent flow.
+    eb_consent_valid_days: int = Field(default=90, ge=1, le=180)
 
     # --- Polling ---
     poll_interval_seconds: int = Field(default=900, ge=30)
