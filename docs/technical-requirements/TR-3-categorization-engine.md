@@ -50,7 +50,9 @@ the Processor**.
 
 ## Responsibilities
 - Match description against ignore patterns (case-insensitive, trimmed, substring — FR-4).
-- Match description against merchant rules; longest matching substring wins (FR-3).
+- Match description against merchant rules; longest match wins (FR-3). A rule entry may
+  be a single word or an **AND-combination** (`a+b`) that fires only when every part is
+  contained in the description (position-independent).
 - Resolve Primary + Secondary category for a matched rule (FR-5).
 - Generate merchant-substring candidates from a description (FR-9): split on spaces, uppercase, trim, exclude existing rule words and stop words.
 - Generate ignore-pattern candidates using the same algorithm, excluding existing ignore patterns and stop words (FR-10).
@@ -61,9 +63,16 @@ the Processor**.
   ownership boundary flagged in [TR-5](TR-5-cache-manager.md).
 
 ## Design Decisions
-- **FR-3 tie-break (decided):** longest matching substring wins; equal-length ties
-  resolved by **sheet order** (first-defined), by scanning entries in order and only
-  replacing on a strictly-longer match.
+- **FR-3 tie-break (decided):** longest match wins; equal-length ties resolved by
+  **sheet order** (first-defined), by scanning entries in order and only replacing on a
+  strictly-longer match.
+- **AND-combinations (decided):** a rule entry may join words with `+`
+  (`AND_SEPARATOR`), e.g. `apcoa+parcheggio`; it matches only when *all* parts are
+  contained in the description (order-independent). Its comparison length is the **sum
+  of part lengths**, so a combination outranks either word alone. Single-word entries
+  are the degenerate one-part case — fully backward-compatible. Suggestion exclusion
+  (FR-9) also splits existing entries on `+`, so a word already used inside a
+  combination counts as taken.
 - **Candidate tokenization (decided):** split on whitespace, strip surrounding
   punctuation, uppercase; then drop tokens <2 chars and tokens containing **any digit**
   (dates, amounts, IBANs, card refs, transaction codes). Dedupe, preserve order.

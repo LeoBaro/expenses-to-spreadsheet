@@ -37,7 +37,14 @@ Matching shall:
 - ignore leading and trailing spaces;
 - succeed if any configured merchant substring is contained within the transaction description.
 
-If multiple rules match, the longest matching substring shall take precedence.
+A merchant substring may be an **AND-combination** of words joined by `+`
+(e.g. `apcoa+parcheggio`). Such a rule matches only when **every** part is contained in
+the description (position-independent). A plain substring with no `+` is a single word,
+as before.
+
+If multiple rules match, the longest match shall take precedence. For an AND-combination
+the match length is the **sum of its parts' lengths**, so a more specific combination
+outranks either of its words alone.
 
 ---
 
@@ -156,7 +163,9 @@ STARBUCKS
 MILANO
 ```
 
-The user shall select one candidate.
+The user shall select **one or more** candidates. Selecting a single word creates a
+single-word rule; selecting several creates an **AND-combination** rule (all selected
+words must be present for the rule to fire, stored joined by `+` — see FR-11).
 
 ---
 
@@ -175,24 +184,32 @@ The user shall select one candidate.
 
 ## FR-11. Merchant Rule Persistence
 
-After the user selects a merchant substring:
+After the user selects a merchant substring (or an AND-combination):
 
 - locate the row corresponding to the selected Primary and Secondary Category;
 - append the substring to Column C.
 
-If Column C already contains values:
+Column C is a comma-separated **OR** list of entries; an entry may itself be an
+**AND-combination** of words joined by `+`. If Column C already contains values:
 
 ```
 coop, carrefour
 ```
 
-it becomes:
+it becomes (single word):
 
 ```
 coop, carrefour, esselunga
 ```
 
-Duplicate substrings shall not be inserted.
+or, for an AND-combination:
+
+```
+coop, carrefour, apcoa+parcheggio
+```
+
+meaning "coop" *or* "carrefour" *or* (both "apcoa" *and* "parcheggio"). Duplicate
+substrings shall not be inserted.
 
 ---
 

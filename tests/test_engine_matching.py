@@ -54,6 +54,41 @@ def test_match_merchant_no_match_returns_none():
     assert engine.match_merchant("random description") is None
 
 
+def test_and_combination_requires_all_parts():
+    engine = _engine([CategoryEntry("Transport", "Parking", ("apcoa+parcheggio",))])
+    # Both words present (position-independent) → matches.
+    assert engine.match_merchant("APCOA PARCHEGGIO PIAZZ").secondary == "Parking"
+    assert engine.match_merchant("PARCHEGGIO ... APCOA").secondary == "Parking"
+    # Only one part present → no match.
+    assert engine.match_merchant("APCOA GENOVA") is None
+    assert engine.match_merchant("PARCHEGGIO CENTRO") is None
+
+
+def test_and_combination_outranks_single_word():
+    engine = _engine(
+        [
+            CategoryEntry("Transport", "Generic", ("apcoa",)),
+            CategoryEntry("Transport", "Parking", ("apcoa+parcheggio",)),
+        ]
+    )
+    # Combined length (5+10) beats the single "apcoa" (5), so the combination wins.
+    result = engine.match_merchant("APCOA PARCHEGGIO PIAZZA MANIN")
+    assert result.secondary == "Parking"
+    assert result.substring == "apcoa+parcheggio"
+
+
+def test_single_word_still_wins_when_combination_incomplete():
+    engine = _engine(
+        [
+            CategoryEntry("Transport", "Generic", ("apcoa",)),
+            CategoryEntry("Transport", "Parking", ("apcoa+parcheggio",)),
+        ]
+    )
+    # "parcheggio" absent → combination doesn't fire; single word still matches.
+    result = engine.match_merchant("APCOA GENOVA SRL")
+    assert result.secondary == "Generic"
+
+
 def test_find_ignore_match():
     engine = _engine([], ignore=["Revolut", "amazon prime"])
     assert engine.find_ignore_match("Top-up from REVOLUT account") == "Revolut"

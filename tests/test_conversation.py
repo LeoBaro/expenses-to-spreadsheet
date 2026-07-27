@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from expenses.domain.transaction import Direction, Transaction, TransactionStatus
 from expenses.processor.conversation import ConversationOrchestrator, Step
+from expenses.telegram_bot.keyboards import DONE_ACTION
 
 CHAT = 42
 
@@ -80,14 +81,20 @@ class _State:
 
 class _Presenter:
     def __init__(self):
-        self.options = []  # (text, options, tag)
+        self.options = []  # (text, options, tag) — appended on both send and edit
         self.messages = []  # (chat_id, text)
+        self.last_done_label = None
 
     async def send_message(self, chat_id, text):
         self.messages.append((chat_id, text))
 
-    async def send_options(self, chat_id, text, options, *, tag):
+    async def send_options(self, chat_id, text, options, *, tag, done_label=None):
         self.options.append((text, list(options), tag))
+        self.last_done_label = done_label
+
+    async def edit_options(self, chat_id, message_id, text, options, *, tag, done_label=None):
+        self.options.append((text, list(options), tag))
+        self.last_done_label = done_label
 
     @property
     def last(self):
@@ -105,6 +112,12 @@ async def _tap(orch, presenter, index):
     """Tap the button at ``index`` of the most recent prompt."""
     _, _, tag = presenter.last
     await orch.on_callback(CHAT, message_id=1, data=f"{tag}:{index}", callback_id="cb")
+
+
+async def _tap_done(orch, presenter):
+    """Tap the Done button of a multi-select prompt."""
+    _, _, tag = presenter.last
+    await orch.on_callback(CHAT, message_id=1, data=f"{tag}:{DONE_ACTION}", callback_id="cb")
 
 
 # --- happy paths ---------------------------------------------------------------
@@ -128,10 +141,15 @@ async def test_categorize_happy_path():
     await _tap(orch, pres, 0)  # Food
     assert pres.last[1:] == (["Groceries"], Step.SECONDARY.value)
 
-    await _tap(orch, pres, 0)  # Groceries
+    await _tap(orch, pres, 0)  # Groceries → enters MERCHANT multi-select
     assert pres.last[1:] == (["STARBUCKS", "MILANO"], Step.MERCHANT.value)
+    assert pres.last_done_label is None  # no Done until a word is picked
 
-    await _tap(orch, pres, 0)  # STARBUCKS
+    await _tap(orch, pres, 0)  # add STARBUCKS
+    assert pres.last[1] == ["✓ STARBUCKS", "MILANO"]  # checkmarked
+    assert pres.last_done_label is not None  # Done now offered
+
+    await _tap_done(orch, pres)  # finalize single-word rule
 
     assert sheets.substrings == [("Food", "Groceries", "STARBUCKS")]  # FR-11
     assert cache.refreshed == 1  # FR-14
@@ -140,6 +158,54 @@ async def test_categorize_happy_path():
     assert state.is_processed("tx-1")  # FR-13
     assert orch._active is None
     assert any("Categorized" in text for _, text in pres.messages)
+
+
+async def test_merchant_and_combination_builds_plus_rule():
+    engine = _Engine(
+        primaries=["Transport"],
+        secondaries={"Transport": ["Parking"]},
+        merchant=["APCOA", "PARCHEGGIO", "PIAZZ"],
+    )
+    orch, sheets, cache, state, pres = _make(engine)
+
+    await orch.handle_unknown(_txn("tx-1", "APCOA PARCHEGGIO PIAZZ"))
+    await _tap(orch, pres, 0)  # Categorize
+    await _tap(orch, pres, 0)  # Transport
+    await _tap(orch, pres, 0)  # Parking → MERCHANT
+
+    await _tap(orch, pres, 0)  # add APCOA
+    await _tap(orch, pres, 1)  # add PARCHEGGIO
+    assert pres.last[1] == ["✓ APCOA", "✓ PARCHEGGIO", "PIAZZ"]
+    await _tap_done(orch, pres)
+
+    # AND-combination stored joined by '+'.
+    assert sheets.substrings == [("Transport", "Parking", "APCOA+PARCHEGGIO")]
+    assert len(sheets.expenses) == 1
+    assert state.is_processed("tx-1")
+
+
+async def test_merchant_toggle_deselects_and_done_needs_a_word():
+    engine = _Engine(
+        primaries=["Transport"], secondaries={"Transport": ["Parking"]}, merchant=["APCOA", "PIAZZ"]
+    )
+    orch, sheets, cache, state, pres = _make(engine)
+
+    await orch.handle_unknown(_txn("tx-1", "APCOA PIAZZ"))
+    await _tap(orch, pres, 0)  # Categorize
+    await _tap(orch, pres, 0)  # Transport
+    await _tap(orch, pres, 0)  # Parking
+
+    await _tap(orch, pres, 0)  # add APCOA
+    await _tap(orch, pres, 0)  # tap APCOA again → deselect
+    assert pres.last[1] == ["APCOA", "PIAZZ"]
+    assert pres.last_done_label is None  # nothing selected
+
+    await _tap_done(orch, pres)  # Done with nothing → ignored
+    assert orch._active is not None and sheets.substrings == []
+
+    await _tap(orch, pres, 1)  # add PIAZZ
+    await _tap_done(orch, pres)
+    assert sheets.substrings == [("Transport", "Parking", "PIAZZ")]  # single-word still works
 
 
 async def test_ignore_happy_path():
@@ -252,7 +318,8 @@ async def test_second_unknown_queues_and_next_begins_after_completion():
     await _tap(orch, pres, 0)  # Categorize
     await _tap(orch, pres, 0)  # Food
     await _tap(orch, pres, 0)  # Groceries
-    await _tap(orch, pres, 0)  # STARBUCKS
+    await _tap(orch, pres, 0)  # add STARBUCKS
+    await _tap_done(orch, pres)  # finalize
 
     assert reprocessed == ["tx-2"]
     assert orch._active is not None and orch._active.transaction.id == "tx-2"
@@ -289,7 +356,8 @@ async def test_drain_auto_processes_queue_until_empty():
     await _tap(orch, pres, 0)  # Categorize
     await _tap(orch, pres, 0)  # Food
     await _tap(orch, pres, 0)  # Groceries
-    await _tap(orch, pres, 0)  # STARBUCKS → completes tx-1, drains tx-2 then tx-3
+    await _tap(orch, pres, 0)  # add STARBUCKS
+    await _tap_done(orch, pres)  # completes tx-1, drains tx-2 then tx-3
 
     assert reprocessed == ["tx-2", "tx-3"]
     assert orch._active is None

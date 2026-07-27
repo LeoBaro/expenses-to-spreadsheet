@@ -35,9 +35,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol, runtime_checkable
 
+from expenses.categorization.engine import AND_SEPARATOR
 from expenses.domain.transaction import Transaction
 from expenses.processor.ports import ProcessedState
 from expenses.sheets.models import ExpenseRow
+from expenses.telegram_bot.keyboards import DONE_ACTION
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,7 @@ class Step(str, Enum):
     ACTION = "act"  # Categorize / Ignore (FR-6)
     PRIMARY = "pri"  # pick Primary Category (FR-7.1)
     SECONDARY = "sec"  # pick Secondary Category (FR-7.2)
-    MERCHANT = "mer"  # pick merchant substring (FR-7.4)
+    MERCHANT = "mer"  # build merchant rule — additive multi-select (FR-7.3/4)
     IGNORE = "ign"  # pick ignore pattern (FR-8.3)
 
 
@@ -87,7 +89,19 @@ class Presenter(Protocol):
     """Telegram Bot (TR-6) — the outbound surface the orchestrator drives."""
 
     async def send_message(self, chat_id: int, text: str) -> None: ...
-    async def send_options(self, chat_id: int, text: str, options: list[str], *, tag: str) -> None: ...
+    async def send_options(
+        self, chat_id: int, text: str, options: list[str], *, tag: str, done_label: str | None = None
+    ) -> None: ...
+    async def edit_options(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        options: list[str],
+        *,
+        tag: str,
+        done_label: str | None = None,
+    ) -> None: ...
 
 
 @dataclass
@@ -99,6 +113,7 @@ class Session:
     options: list[str] = field(default_factory=list)  # currently presented (index → value)
     primary: str | None = None
     secondary: str | None = None
+    selected: list[str] = field(default_factory=list)  # additive multi-select (MERCHANT step)
 
 
 ReprocessFn = Callable[[Transaction], Awaitable[None]]
@@ -184,10 +199,13 @@ class ConversationOrchestrator:
             if session is None:
                 logger.debug("callback %r with no active conversation; ignoring", data)
                 return
-            choice = self._decode(session, data)
-            if choice is None:
-                return  # stale / wrong-step / malformed tap
-            finished = await self._advance(session, choice)
+            tag, _, arg = data.partition(":")
+            if tag != session.step.value:
+                logger.info(
+                    "stale/wrong-step callback %r (step is %s); ignoring", data, session.step.value
+                )
+                return
+            finished = await self._handle_step(session, arg, message_id)
         # Drain queued transactions outside the lock (re-processing re-enters this handler).
         if finished:
             await self._drain()
@@ -196,46 +214,73 @@ class ConversationOrchestrator:
         # This slice is entirely button-driven; free text is not part of any step.
         logger.debug("ignoring free-text message from %s: %r", chat_id, text)
 
-    def _decode(self, session: Session, data: str) -> str | None:
-        """Map a ``"{tag}:{index}"`` callback to the option the active step presented."""
-        tag, _, index_str = data.partition(":")
-        if tag != session.step.value:
-            logger.info("stale/wrong-step callback %r (step is %s); ignoring", data, session.step.value)
-            return None
+    def _option_at(self, session: Session, arg: str) -> str | None:
+        """Resolve a numeric callback ``arg`` to the option the step presented."""
         try:
-            index = int(index_str)
+            index = int(arg)
         except ValueError:
-            logger.warning("malformed callback data %r", data)
+            logger.warning("non-index callback arg %r", arg)
             return None
         if not 0 <= index < len(session.options):
-            logger.warning("callback index %d out of range for %r", index, session.options)
+            logger.warning("callback index %r out of range for %r", arg, session.options)
             return None
         return session.options[index]
 
     # --- step machine; returns True when the session finished ---
 
-    async def _advance(self, session: Session, choice: str) -> bool:
-        if session.step is Step.ACTION:
+    async def _handle_step(self, session: Session, arg: str, message_id: int) -> bool:
+        step = session.step
+        if step is Step.ACTION:
+            choice = self._option_at(session, arg)
+            if choice is None:
+                return False
             if choice == _ACTION_CATEGORIZE:
                 await self._ask_primary(session)
             else:
                 await self._ask_ignore_pattern(session)
             return False
-        if session.step is Step.PRIMARY:
+        if step is Step.PRIMARY:
+            choice = self._option_at(session, arg)
+            if choice is None:
+                return False
             session.primary = choice
             await self._ask_secondary(session)
             return False
-        if session.step is Step.SECONDARY:
+        if step is Step.SECONDARY:
+            choice = self._option_at(session, arg)
+            if choice is None:
+                return False
             session.secondary = choice
             await self._ask_merchant_substring(session)
             return False
-        if session.step is Step.MERCHANT:
-            await self._finish_categorize(session, substring=choice)
-            return True
-        if session.step is Step.IGNORE:
+        if step is Step.MERCHANT:
+            return await self._handle_merchant(session, arg, message_id)
+        if step is Step.IGNORE:
+            choice = self._option_at(session, arg)
+            if choice is None:
+                return False
             await self._finish_ignore(session, pattern=choice)
             return True
         return False  # pragma: no cover - exhaustive above
+
+    async def _handle_merchant(self, session: Session, arg: str, message_id: int) -> bool:
+        """Additive multi-select (FR-7.3/4): tapping a word toggles it into the rule;
+        Done saves the AND-combination of the selected words."""
+        if arg == DONE_ACTION:
+            if not session.selected:
+                return False  # Done isn't offered until ≥1 word is picked; ignore a stray tap
+            rule = AND_SEPARATOR.join(session.selected)  # e.g. "APCOA+PARCHEGGIO" (writer lowercases)
+            await self._finish_categorize(session, substring=rule)
+            return True
+        word = self._option_at(session, arg)
+        if word is None:
+            return False
+        if word in session.selected:
+            session.selected.remove(word)  # tap again to de-select
+        else:
+            session.selected.append(word)
+        await self._render_merchant(session, message_id)
+        return False
 
     # --- prompts ---
 
@@ -274,12 +319,42 @@ class ConversationOrchestrator:
             return
         session.step = Step.MERCHANT
         session.options = candidates
+        session.selected = []
+        # First render: no Done button yet (nothing selected). Subsequent taps edit this
+        # same message in place via _render_merchant.
         await self._presenter.send_options(
             self._chat_id,
-            f"{session.primary} / {session.secondary}\nWhich word should become the merchant rule?",
-            candidates,
+            self._merchant_text(session),
+            self._merchant_labels(session),
             tag=Step.MERCHANT.value,
+            done_label=None,
         )
+
+    async def _render_merchant(self, session: Session, message_id: int) -> None:
+        """Re-draw the merchant prompt in place after a word is toggled."""
+        done_label = None
+        if session.selected:
+            done_label = f"✓ Done → {AND_SEPARATOR.join(w.lower() for w in session.selected)}"
+        await self._presenter.edit_options(
+            self._chat_id,
+            message_id,
+            self._merchant_text(session),
+            self._merchant_labels(session),
+            tag=Step.MERCHANT.value,
+            done_label=done_label,
+        )
+
+    def _merchant_labels(self, session: Session) -> list[str]:
+        """Candidate words, checkmarked when selected. Order matches ``session.options``
+        so callback indices stay stable across re-renders (safe against stale taps)."""
+        return [f"✓ {word}" if word in session.selected else word for word in session.options]
+
+    def _merchant_text(self, session: Session) -> str:
+        header = f"{session.primary} / {session.secondary}"
+        if session.selected:
+            rule = AND_SEPARATOR.join(w.lower() for w in session.selected)
+            return f"{header}\nRule so far: {rule}\nTap words to add/remove, then Done."
+        return f"{header}\nTap the word(s) that identify this merchant, then Done."
 
     async def _ask_ignore_pattern(self, session: Session) -> None:
         candidates = self._engine.suggest_ignore_patterns(session.transaction.description)
@@ -320,7 +395,7 @@ class ConversationOrchestrator:
         self._state.mark_processed(txn.id)  # FR-13 (after the write, DD-3)
         self._clear(session)
 
-        rule_line = f"Rule added: “{substring}”" if substring else "No reusable rule was added."
+        rule_line = f"Rule added: “{substring.lower()}”" if substring else "No reusable rule was added."
         await self._safe_notify(
             f"✅ Categorized “{txn.description}”\n"
             f"Category: {session.primary} / {session.secondary}\n{rule_line}"

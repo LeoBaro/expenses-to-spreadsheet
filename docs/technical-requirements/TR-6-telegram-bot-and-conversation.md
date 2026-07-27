@@ -75,7 +75,10 @@ user.
   `callback_data = f"{step}:{index}"` — a step tag plus the option's **index**, not its
   text. (Superseded the earlier `prefix + option` idea: category names can be long or
   contain colons and would risk the 64-byte cap; index encoding is always tiny and the
-  Processor maps the index back to the option it presented. See TR-2 DD-6.)
+  Processor maps the index back to the option it presented. See TR-2 DD-6.) The merchant
+  step is an **additive multi-select**: `send_options`/`edit_options` take an optional
+  `done_label`, which appends a `f"{step}:done"` confirm button; tapping a word re-renders
+  the same message in place (`edit_options`) with a checkmark. See TR-2 DD-7.
 - **Conversation state (decided elsewhere):** the *workflow* state (which transaction,
   step, partial selections) lives in the Processor (TR-2, `conversation.py`); the bot
   only routes a callback back to it.
@@ -91,8 +94,9 @@ The Bot itself is stateless beyond PTB's own machinery. The conversation/session
 `ConversationOrchestrator` (`Session`), not here. Contracts at the boundary:
 `TelegramUpdateHandler` (inbound: `on_callback(chat_id, message_id, data, callback_id)`,
 `on_message(chat_id, text)`) and the outbound presenter surface (`send_message`,
-`send_options(chat_id, text, options, *, tag)`), where each button's `callback_data` is
-`f"{tag}:{index}"`.
+`send_options(chat_id, text, options, *, tag, done_label=None)`, and
+`edit_options(chat_id, message_id, …)` for in-place re-render), where each button's
+`callback_data` is `f"{tag}:{index}"` (or `f"{tag}:done"` for the multi-select confirm).
 
 ## Interfaces
 - Inbound: Telegram updates (callbacks) from the user; notification + prompt requests from the Transaction Processor (TR-2).

@@ -10,6 +10,16 @@ from expenses.categorization.models import MatchResult
 from expenses.categorization.stopwords import DEFAULT_STOP_WORDS
 from expenses.categorization.tokens import candidate_tokens
 
+# A merchant rule entry may be an AND-combination of words joined by this separator,
+# e.g. "apcoa+parcheggio" fires only when *all* parts are present in the description
+# (position-independent). A plain entry with no separator is a single-word rule.
+AND_SEPARATOR = "+"
+
+
+def _rule_parts(substring: str) -> list[str]:
+    """Split a merchant-rule entry into its AND parts (trimmed, lowercased, non-empty)."""
+    return [part.strip().lower() for part in substring.split(AND_SEPARATOR) if part.strip()]
+
 
 class CacheView(Protocol):
     """The read side of the Cache Manager (TR-5)."""
@@ -36,17 +46,26 @@ class CategorizationEngine:
         return None
 
     def match_merchant(self, description: str) -> MatchResult | None:
-        """FR-3: the longest merchant substring contained in the description wins;
-        ties resolved by sheet order (first defined). None if nothing matches."""
+        """FR-3: the longest merchant rule matching the description wins; ties resolved
+        by sheet order (first defined). None if nothing matches.
+
+        A rule entry may be a single word ("apcoa") or an AND-combination
+        ("apcoa+parcheggio"), which fires only when *every* part is contained in the
+        description (position-independent, case-insensitive). A combination's length —
+        for the longest-wins comparison — is the sum of its parts' lengths, so a more
+        specific combination outranks either of its words alone."""
         haystack = description.lower()
         best: MatchResult | None = None
         best_len = 0
         for entry in self._cache.snapshot.entries:
             for substring in entry.substrings:
-                needle = substring.strip().lower()
-                if needle and needle in haystack and len(needle) > best_len:
+                parts = _rule_parts(substring)
+                if not parts or not all(part in haystack for part in parts):
+                    continue
+                length = sum(len(part) for part in parts)
+                if length > best_len:
                     best = MatchResult(entry.primary, entry.secondary, substring)
-                    best_len = len(needle)
+                    best_len = length
         return best
 
     # --- Category query (FR-7) ---
@@ -73,10 +92,10 @@ class CategorizationEngine:
         """FR-9: candidate substrings, excluding stop words and any word already used
         as a merchant substring in ANY rule (global scope)."""
         taken = {
-            substring.strip().upper()
+            part.upper()
             for entry in self._cache.snapshot.entries
             for substring in entry.substrings
-            if substring.strip()
+            for part in _rule_parts(substring)
         }
         return self._suggest(description, taken)
 

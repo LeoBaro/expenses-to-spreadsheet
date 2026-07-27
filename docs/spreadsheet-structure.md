@@ -34,7 +34,10 @@ Example:
 - The sheet has **no header row** — row 1 is already the first data row. (The
   "Primary / Secondary / Merchant Substrings" line above is only column labelling for
   this document.)
-- The Merchant Substrings cell (Column C) contains a comma-separated list of substrings.
+- The Merchant Substrings cell (Column C) contains a comma-separated list of substrings
+  (OR between entries). An entry may be an AND-combination of words joined by `+`
+  (e.g. `apcoa+parcheggio`), which matches only when all its words appear in the
+  description. See FR-3 / FR-11.
 - Empty cells indicate that no merchant rule has yet been defined for that category.
 - Each Primary Category occupies a fixed block of rows.
 - Each Primary Category may contain **at most 10 Secondary Categories**.

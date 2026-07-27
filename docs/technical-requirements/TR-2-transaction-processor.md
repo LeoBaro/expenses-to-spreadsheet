@@ -92,6 +92,13 @@ external access. The round trip to the Bot (present options → relay selection)
   Indices keep callback_data within Telegram's 64-byte limit regardless of category-name
   length, and the step tag lets the orchestrator reject stale taps on superseded prompts
   (a tap is accepted only when its tag equals the active session's current step).
+- **Merchant rule as additive multi-select (decided, DD-7):** the merchant step (FR-7.3/4)
+  is not a single tap — tapping a word **toggles** it into the rule and the prompt is
+  re-rendered in place (checkmarks + a running preview); a `f"{step}:done"` button (shown
+  once ≥1 word is picked) finalizes. One word → a single-word rule; several → an
+  **AND-combination** stored joined by `+` (TR-3). Toggles keep the option order/indices
+  stable across re-renders, so a delayed tap can never map to the wrong word. This is why
+  the Bot presenter also exposes `edit_options` (in-place re-render).
 - **Empty-candidate fallbacks (decided):** if no merchant substrings can be suggested
   (FR-9), the expense is still recorded with the chosen category (the user's work isn't
   lost) but **no rule** is created; if no ignore patterns can be suggested (FR-10), the

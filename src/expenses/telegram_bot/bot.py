@@ -91,14 +91,40 @@ class ExpenseBot:
         """Send an informational notification (FR-5)."""
         await self._app.bot.send_message(chat_id, text)
 
-    async def send_options(self, chat_id: int, text: str, options: list[str], *, tag: str = "") -> None:
+    async def send_options(
+        self, chat_id: int, text: str, options: list[str], *, tag: str = "", done_label: str | None = None
+    ) -> None:
         """Send a prompt with an inline keyboard of choices (FR-6/7/8).
 
         ``tag`` identifies the workflow step; each button's callback_data is
-        ``f"{tag}:{index}"`` so the Processor can map a tap back to the option."""
+        ``f"{tag}:{index}"`` so the Processor can map a tap back to the option.
+        ``done_label``, when set, appends a confirm button (multi-select steps)."""
         await self._app.bot.send_message(
-            chat_id, text, reply_markup=options_keyboard(options, tag=tag)
+            chat_id, text, reply_markup=options_keyboard(options, tag=tag, done_label=done_label)
         )
+
+    async def edit_options(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        options: list[str],
+        *,
+        tag: str = "",
+        done_label: str | None = None,
+    ) -> None:
+        """Re-render an existing prompt in place (used by the additive multi-select step
+        so toggling a word updates the same message instead of sending a new one)."""
+        try:
+            await self._app.bot.edit_message_text(
+                text,
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=options_keyboard(options, tag=tag, done_label=done_label),
+            )
+        except BadRequest as exc:
+            # "Message is not modified" (e.g. a duplicate tap) is harmless; log and move on.
+            logger.warning("could not edit message %s: %s", message_id, exc)
 
     # --- lifecycle ---
 
