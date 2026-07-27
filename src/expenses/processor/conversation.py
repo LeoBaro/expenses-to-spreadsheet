@@ -57,9 +57,10 @@ class Step(str, Enum):
 _ACTION_CATEGORIZE = "Categorize"
 _ACTION_IGNORE = "Ignore"
 
-# Merchant step: label for the button that categorizes the expense without creating a
-# reusable merchant rule (the user just wants this one filed).
+# Labels for the "Skip" buttons that let the user complete a step without creating a
+# reusable rule/pattern (just handle this one transaction).
 _MERCHANT_SKIP_LABEL = "⏭ Skip — categorize without a rule"
+_IGNORE_SKIP_LABEL = "⏭ Skip — ignore without a pattern"
 
 
 @runtime_checkable
@@ -270,6 +271,11 @@ class ConversationOrchestrator:
         elif step is Step.MERCHANT:
             await self._handle_merchant(session, arg, message_id)
         elif step is Step.IGNORE:
+            if arg == SKIP_ACTION:
+                # Ignore this transaction (mark processed, no expense) but add no
+                # reusable pattern — FR-8's pattern is optional.
+                await self._finish_ignore(session, pattern=None)
+                return
             choice = self._option_at(session, arg)
             if choice is None:
                 return
@@ -389,9 +395,10 @@ class ConversationOrchestrator:
         session.options = candidates
         await self._presenter.send_options(
             self._chat_id,
-            "Which word should become the ignore pattern?",
+            "Pick a word to ignore on future transactions — or Skip to ignore just this one.",
             candidates,
             tag=Step.IGNORE.value,
+            skip_label=_IGNORE_SKIP_LABEL,
         )
 
     # --- terminal actions ---

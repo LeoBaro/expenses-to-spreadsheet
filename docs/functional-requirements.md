@@ -129,7 +129,9 @@ If the user selects **Ignore**, the application shall:
 
 1. Generate candidate ignore patterns.
 2. Present the candidate patterns.
-3. Allow the user to choose one pattern.
+3. Allow the user to choose one pattern. Choosing a pattern is **optional**: the user
+   may **Skip** and ignore only this transaction without defining a reusable pattern
+   (steps 4–5 are then omitted).
 4. Append the selected pattern to the Ignore patterns sheet.
 5. Refresh the cache.
 6. Mark the current transaction as processed.

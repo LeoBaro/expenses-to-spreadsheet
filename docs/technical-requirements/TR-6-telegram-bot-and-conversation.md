@@ -78,9 +78,10 @@ user.
   Processor maps the index back to the option it presented. See TR-2 DD-6.) The merchant
   step is an **additive multi-select**: `send_options`/`edit_options` take optional
   `done_label` and `skip_label`, which append `f"{step}:done"` (confirm) and
-  `f"{step}:skip"` (categorize without a rule) buttons; tapping a word re-renders the same
-  message in place (`edit_options`) with a checkmark. Skip is always shown; Done appears
-  once ≥1 word is picked. See TR-2 DD-7/DD-8.
+  `f"{step}:skip"` buttons; tapping a word re-renders the same message in place
+  (`edit_options`) with a checkmark. Skip is always shown; Done appears once ≥1 word is
+  picked. The **ignore** step is single-select but also carries a `skip_label` (ignore
+  this one without a pattern). See TR-2 DD-7/DD-8.
 - **Conversation state (decided elsewhere):** the *workflow* state (which transaction,
   step, partial selections) lives in the Processor (TR-2, `conversation.py`); the bot
   only routes a callback back to it.

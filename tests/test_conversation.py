@@ -276,6 +276,24 @@ async def test_ignore_happy_path():
     assert orch._active is None
 
 
+async def test_ignore_skip_marks_processed_without_a_pattern():
+    engine = _Engine(ignore=["REVOLUT", "TOPUP"])
+    orch, sheets, cache, state, pres = _make(engine)
+
+    await orch.handle_unknown(_txn("tx-1"))
+    await _tap(orch, pres, 1)  # Ignore → candidates present
+    assert pres.last[1:] == (["REVOLUT", "TOPUP"], Step.IGNORE.value)
+    assert pres.last_skip_label is not None  # Skip offered alongside patterns
+
+    await _tap_skip(orch, pres)  # ignore this one, add no pattern
+
+    assert sheets.ignores == []  # no pattern written
+    assert cache.refreshed == 0  # nothing written to Ignore
+    assert sheets.expenses == []  # still no expense (FR-8)
+    assert state.is_processed("tx-1")  # but marked processed
+    assert orch._active is None
+
+
 # --- callback robustness -------------------------------------------------------
 
 
