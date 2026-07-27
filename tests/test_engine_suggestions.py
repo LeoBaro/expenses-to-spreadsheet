@@ -34,6 +34,19 @@ def test_suggest_excludes_words_already_used_by_any_rule_global():
     assert engine.suggest_merchant_substrings("STARBUCKS MILANO") == ["STARBUCKS"]
 
 
+def test_suggest_offers_word_used_only_inside_a_combination():
+    engine = _engine([CategoryEntry("Digital", "AI", ("openai+chatgpt",))])
+    # "openai" is only a component of an AND-combination, not a standalone rule → still
+    # offered, so the user can create a plain "openai" rule (regression for the "Openai"
+    # case that previously produced no candidates and forced a Skip).
+    assert engine.suggest_merchant_substrings("Openai") == ["OPENAI"]
+
+
+def test_suggest_still_excludes_standalone_word_rules():
+    engine = _engine([CategoryEntry("Groceries", "General", ("conad",))])
+    assert engine.suggest_merchant_substrings("CONAD VIA ROMA") == ["VIA", "ROMA"]
+
+
 def test_suggest_dedupes_preserving_order():
     engine = _engine()
     assert engine.suggest_merchant_substrings("Ikea Ikea Store") == ["IKEA", "STORE"]

@@ -205,7 +205,7 @@ class ConversationOrchestrator:
     # --- TelegramUpdateHandler (called by the Bot) ---
 
     async def on_callback(self, chat_id: int, message_id: int, data: str, callback_id: str) -> None:
-        finished = False
+        ended = False
         async with self._lock:
             session = self._active
             if session is None:
@@ -217,9 +217,14 @@ class ConversationOrchestrator:
                     "stale/wrong-step callback %r (step is %s); ignoring", data, session.step.value
                 )
                 return
-            finished = await self._handle_step(session, arg, message_id)
+            await self._handle_step(session, arg, message_id)
+            # The session may have finished directly (Done/Skip/Ignore) OR indirectly —
+            # an empty-candidate step or an abort completes it from inside a helper. Keying
+            # the drain off "did the active session end" catches every completion path,
+            # so queued transactions are never stranded.
+            ended = self._active is None
         # Drain queued transactions outside the lock (re-processing re-enters this handler).
-        if finished:
+        if ended:
             await self._drain()
 
     async def on_message(self, chat_id: int, text: str) -> None:
@@ -238,44 +243,39 @@ class ConversationOrchestrator:
             return None
         return session.options[index]
 
-    # --- step machine; returns True when the session finished ---
+    # --- step machine (advances or completes the active session in place) ---
 
-    async def _handle_step(self, session: Session, arg: str, message_id: int) -> bool:
+    async def _handle_step(self, session: Session, arg: str, message_id: int) -> None:
         step = session.step
         if step is Step.ACTION:
             choice = self._option_at(session, arg)
             if choice is None:
-                return False
+                return
             if choice == _ACTION_CATEGORIZE:
                 await self._ask_primary(session)
             else:
                 await self._ask_ignore_pattern(session)
-            return False
-        if step is Step.PRIMARY:
+        elif step is Step.PRIMARY:
             choice = self._option_at(session, arg)
             if choice is None:
-                return False
+                return
             session.primary = choice
             await self._ask_secondary(session)
-            return False
-        if step is Step.SECONDARY:
+        elif step is Step.SECONDARY:
             choice = self._option_at(session, arg)
             if choice is None:
-                return False
+                return
             session.secondary = choice
             await self._ask_merchant_substring(session)
-            return False
-        if step is Step.MERCHANT:
-            return await self._handle_merchant(session, arg, message_id)
-        if step is Step.IGNORE:
+        elif step is Step.MERCHANT:
+            await self._handle_merchant(session, arg, message_id)
+        elif step is Step.IGNORE:
             choice = self._option_at(session, arg)
             if choice is None:
-                return False
+                return
             await self._finish_ignore(session, pattern=choice)
-            return True
-        return False  # pragma: no cover - exhaustive above
 
-    async def _handle_merchant(self, session: Session, arg: str, message_id: int) -> bool:
+    async def _handle_merchant(self, session: Session, arg: str, message_id: int) -> None:
         """Additive multi-select (FR-7.3/4): tapping a word toggles it into the rule;
         Done saves the AND-combination of the selected words; Skip categorizes without
         creating any rule."""
@@ -283,22 +283,21 @@ class ConversationOrchestrator:
             # Record the expense with the chosen category, but no reusable rule (FR-7.4
             # is optional — the user may just want this one filed).
             await self._finish_categorize(session, substring=None)
-            return True
+            return
         if arg == DONE_ACTION:
             if not session.selected:
-                return False  # Done isn't offered until ≥1 word is picked; ignore a stray tap
+                return  # Done isn't offered until ≥1 word is picked; ignore a stray tap
             rule = AND_SEPARATOR.join(session.selected)  # e.g. "APCOA+PARCHEGGIO" (writer lowercases)
             await self._finish_categorize(session, substring=rule)
-            return True
+            return
         word = self._option_at(session, arg)
         if word is None:
-            return False
+            return
         if word in session.selected:
             session.selected.remove(word)  # tap again to de-select
         else:
             session.selected.append(word)
         await self._render_merchant(session, message_id)
-        return False
 
     # --- prompts ---
 

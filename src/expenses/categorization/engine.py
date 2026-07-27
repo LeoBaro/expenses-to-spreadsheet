@@ -89,13 +89,18 @@ class CategorizationEngine:
     # --- Suggestions (FR-9, FR-10) ---
 
     def suggest_merchant_substrings(self, description: str) -> list[str]:
-        """FR-9: candidate substrings, excluding stop words and any word already used
-        as a merchant substring in ANY rule (global scope)."""
+        """FR-9: candidate substrings, excluding stop words and any word already used as
+        a **standalone** merchant rule in ANY category (global scope).
+
+        Words that appear only as a *component* of an AND-combination (``a+b``) are NOT
+        excluded — a combination is one rule, its parts are not standalone rules, so the
+        user is still free to promote such a word to its own rule (longest-wins keeps the
+        two unambiguous). Only single-word entries count as "taken"."""
         taken = {
-            part.upper()
+            substring.strip().upper()
             for entry in self._cache.snapshot.entries
             for substring in entry.substrings
-            for part in _rule_parts(substring)
+            if substring.strip() and AND_SEPARATOR not in substring
         }
         return self._suggest(description, taken)
 

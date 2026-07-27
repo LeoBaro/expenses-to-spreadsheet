@@ -70,9 +70,12 @@ the Processor**.
   (`AND_SEPARATOR`), e.g. `apcoa+parcheggio`; it matches only when *all* parts are
   contained in the description (order-independent). Its comparison length is the **sum
   of part lengths**, so a combination outranks either word alone. Single-word entries
-  are the degenerate one-part case — fully backward-compatible. Suggestion exclusion
-  (FR-9) also splits existing entries on `+`, so a word already used inside a
-  combination counts as taken.
+  are the degenerate one-part case — fully backward-compatible. **Suggestion exclusion
+  (FR-9) counts only standalone single-word entries as "taken"** — a word used solely as
+  a *component* of a combination (`a+b`) is still suggested, so the user can promote it
+  to its own rule (longest-wins keeps the two unambiguous). Excluding combination parts
+  was too aggressive: it left descriptions like "Openai" (with an existing `openai+…`
+  rule) unable to offer any candidate.
 - **Candidate tokenization (decided):** split on whitespace, strip surrounding
   punctuation, uppercase; then drop tokens <2 chars and tokens containing **any digit**
   (dates, amounts, IBANs, card refs, transaction codes). Dedupe, preserve order.

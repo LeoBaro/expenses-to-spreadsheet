@@ -86,7 +86,11 @@ external access. The round trip to the Bot (present options → relay selection)
   auto-categorizes its siblings in the same batch. All workflow-state mutation is
   serialized by an `asyncio.Lock`, released before re-processing (which re-enters the
   handler) so there is no re-entrancy deadlock. In-flight transaction ids are de-duped so
-  a later poll cycle cannot double-queue or re-notify a pending one.
+  a later poll cycle cannot double-queue or re-notify a pending one. **The drain fires
+  whenever the active session *ended* (`self._active is None` after handling a callback),
+  not on a step's return flag** — a session can complete indirectly (an empty-candidate
+  step or an abort finishes it from inside a helper), and keying off the return flag once
+  left those queued transactions stranded until an app restart.
 - **Callback keying (decided, DD-6):** each prompt's inline buttons carry
   `f"{step}:{index}"` — a **step tag** plus the **option index**, never the option text.
   Indices keep callback_data within Telegram's 64-byte limit regardless of category-name

@@ -413,3 +413,55 @@ async def test_drain_auto_processes_queue_until_empty():
     assert reprocessed == ["tx-2", "tx-3"]
     assert orch._active is None
     assert not orch._queue
+
+
+async def test_empty_merchant_candidates_still_drains_queue():
+    # Regression: tx-1 yields NO merchant candidates → the session auto-finishes from
+    # inside the SECONDARY step (not a MERCHANT Done/Skip tap). The queued tx-2 must
+    # still be picked up — previously the drain was keyed off the step's return value,
+    # so this completion path stranded the queue until an app restart.
+    engine = _Engine(primaries=["Food"], secondaries={"Food": ["Groceries"]}, merchant=[])
+    orch, sheets, cache, state, pres = _make(engine)
+
+    reprocessed = []
+
+    async def reprocess(txn):
+        reprocessed.append(txn.id)
+        await orch.handle_unknown(txn)  # still unknown → opens its own conversation
+
+    orch.set_reprocess(reprocess)
+
+    await orch.handle_unknown(_txn("tx-1", "OPENAI"))
+    await orch.handle_unknown(_txn("tx-2", "SPESA CONAD"))  # queued behind tx-1
+    assert orch._active.transaction.id == "tx-1"
+
+    await _tap(orch, pres, 0)  # Categorize
+    await _tap(orch, pres, 0)  # Food
+    await _tap(orch, pres, 0)  # Groceries → no candidates → auto-finish tx-1
+
+    assert state.is_processed("tx-1")  # tx-1 filed without a rule
+    assert reprocessed == ["tx-2"]  # queue drained
+    assert orch._active is not None and orch._active.transaction.id == "tx-2"
+
+
+async def test_abort_on_misconfig_still_drains_queue():
+    # An abort (no Primary Categories) also ends the session from inside a helper;
+    # the queue must drain there too.
+    engine = _Engine(primaries=[])  # misconfigured Support → abort on Categorize
+    orch, sheets, cache, state, pres = _make(engine)
+
+    reprocessed = []
+
+    async def reprocess(txn):
+        reprocessed.append(txn.id)
+        await orch.handle_unknown(txn)
+
+    orch.set_reprocess(reprocess)
+
+    await orch.handle_unknown(_txn("tx-1"))
+    await orch.handle_unknown(_txn("tx-2", "SHOP"))  # queued
+    await _tap(orch, pres, 0)  # Categorize → no primaries → abort tx-1
+
+    assert not state.is_processed("tx-1")  # aborted, not marked (will retry)
+    assert reprocessed == ["tx-2"]  # queue still drained
+    assert orch._active is not None and orch._active.transaction.id == "tx-2"
