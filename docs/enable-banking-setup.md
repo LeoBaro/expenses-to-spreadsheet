@@ -85,11 +85,15 @@ Then:
 ## 5. Verify
 
 ```bash
-uv run expenses-poll        # one-shot: fetches, maps, and reports findings
+uv run expenses-poll                   # one-shot: fetches, maps, and reports findings
+uv run expenses-poll --month 2026-02   # or inspect a specific past month instead
+uv run expenses-poll --from 2026-02-10 --to 2026-02-20   # or an arbitrary range
 ```
 
-You should see your recent transactions and a `poll cycle complete` summary. Then run the
-full app with `uv run expenses-serve`.
+You should see your recent transactions and a `poll cycle complete` summary. This is
+read-only diagnostics — it never categorizes, writes to the spreadsheet, notifies over
+Telegram, or marks anything processed, even for a past month. Then run the full app
+with `uv run expenses-serve`.
 
 ---
 

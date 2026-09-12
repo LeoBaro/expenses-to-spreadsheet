@@ -202,11 +202,12 @@ Package [`src/expenses/poller/`](../../src/expenses/poller/):
 - [`enable_banking/adapter.py`](../../src/expenses/poller/enable_banking/adapter.py) — anti-corruption mapping + settled-debit filter.
 - [`poller.py`](../../src/expenses/poller/poller.py) — one poll cycle (map → filter → dedup → sink).
 - [`scheduler.py`](../../src/expenses/poller/scheduler.py) — non-overlapping interval loop (DD-1).
-- [`cli.py`](../../src/expenses/poller/cli.py) — `expenses-poll`, the one-shot run that reports the live-API findings above.
+- [`cli.py`](../../src/expenses/poller/cli.py) — `expenses-poll`, the one-shot run that reports the live-API findings above. Defaults to the rolling lookback window; `--month YYYY-MM` or `--from`/`--to YYYY-MM-DD` inspect an arbitrary window instead (read-only — it never goes through the Processor, so nothing is categorized/written/marked for that window).
 
 Tests in [`tests/`](../../tests/) cover adapter mapping, the settled-debit filter,
-derived-id determinism, cursor pagination, poll-cycle filtering, and scheduler
-non-overlap/error-resilience.
+derived-id determinism, cursor pagination, poll-cycle filtering, scheduler
+non-overlap/error-resilience, and `expenses-poll`'s window resolution
+(`tests/test_poller_cli.py`).
 
 ## Mock validation (2026-07-26)
 Validated end-to-end against Enable Banking's *Mock ASPSP* with hand-crafted
