@@ -52,9 +52,10 @@ def to_transaction(raw: dict[str, Any]) -> Transaction:
     )
 
 
-def is_settled_debit(transaction: Transaction) -> bool:
-    """FR-1: only settled (BOOKED) debit transactions are processed."""
-    return transaction.is_settled_debit
+def is_expense(transaction: Transaction) -> bool:
+    """FR-1: only settled (BOOKED), debit, strictly-positive-amount transactions
+    are processed (DD-6 excludes zero-amount settled debits)."""
+    return transaction.is_expense
 
 
 def _map_direction(indicator: Any) -> Direction:

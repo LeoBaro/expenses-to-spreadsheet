@@ -61,8 +61,8 @@ class TransactionPoller:
                 logger.exception("skipping unmappable transaction")
                 continue
 
-            # FR-1: only settled debit transactions represent expenses.
-            if not adapter.is_settled_debit(transaction):
+            # FR-1: only settled, debit, positive-amount transactions represent expenses.
+            if not adapter.is_expense(transaction):
                 skipped_not_expense += 1
                 continue
 

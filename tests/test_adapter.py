@@ -29,11 +29,18 @@ def test_amount_is_non_negative_direction_from_indicator(booked_debit):
 
 
 def test_settled_debit_filter(booked_debit, pending_debit, booked_credit):
-    assert adapter.is_settled_debit(adapter.to_transaction(booked_debit)) is True
+    assert adapter.is_expense(adapter.to_transaction(booked_debit)) is True
     # Pending is not settled.
-    assert adapter.is_settled_debit(adapter.to_transaction(pending_debit)) is False
+    assert adapter.is_expense(adapter.to_transaction(pending_debit)) is False
     # Credit is not an expense.
-    assert adapter.is_settled_debit(adapter.to_transaction(booked_credit)) is False
+    assert adapter.is_expense(adapter.to_transaction(booked_credit)) is False
+
+
+def test_zero_amount_settled_debit_is_not_an_expense(zero_amount_debit):
+    # DD-6: a zero-amount settled debit (e.g. an authorization hold) is not an expense.
+    t = adapter.to_transaction(zero_amount_debit)
+    assert t.amount == Decimal("0")
+    assert adapter.is_expense(t) is False
 
 
 def test_maps_dbit_to_debit(debit_without_id):
@@ -55,7 +62,7 @@ def test_unknown_indicator_becomes_unknown_and_is_not_expense(booked_debit):
     booked_debit["credit_debit_indicator"] = "WAT"
     t = adapter.to_transaction(booked_debit)
     assert t.direction is Direction.UNKNOWN
-    assert adapter.is_settled_debit(t) is False
+    assert adapter.is_expense(t) is False
 
 
 def test_booking_date_falls_back_to_value_date():

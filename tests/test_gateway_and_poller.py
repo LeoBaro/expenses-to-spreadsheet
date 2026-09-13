@@ -71,6 +71,25 @@ async def test_poll_cycle_filters_and_forwards(booked_debit, pending_debit, book
 
 
 @respx.mock
+async def test_poll_cycle_skips_zero_amount_debit(booked_debit, zero_amount_debit):
+    url = f"{BASE}/accounts/acc-1/transactions"
+    respx.get(url).mock(
+        return_value=httpx.Response(200, json={"transactions": [booked_debit, zero_amount_debit]})
+    )
+
+    sink = _RecordingSink()
+    async with httpx.AsyncClient() as client:
+        gateway = EnableBankingGateway(client, _StubAuth(), BASE)
+        poller = TransactionPoller(gateway, InMemoryProcessedStore(), sink, account_uid="acc-1", lookback_days=7)
+        result = await poller.poll_once(today=date(2026, 7, 24))
+
+    # DD-6: the zero-amount debit is not an expense, even though it's settled+debit.
+    assert [t.id for t in sink.received] == ["tx-1001"]
+    assert result.forwarded == 1
+    assert result.skipped_not_expense == 1
+
+
+@respx.mock
 async def test_poll_cycle_skips_already_processed(booked_debit):
     url = f"{BASE}/accounts/acc-1/transactions"
     respx.get(url).mock(return_value=httpx.Response(200, json={"transactions": [booked_debit]}))

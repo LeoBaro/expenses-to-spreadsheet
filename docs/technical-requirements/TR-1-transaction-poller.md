@@ -102,6 +102,17 @@ The poller does **not** own processed-state logic. It asks the State Manager (TR
 whether an identifier is already processed and drops those transactions early to avoid
 unnecessary downstream work; the authoritative skip still happens in TR-2/TR-7.
 
+### DD-6. Positive-amount filter (FR-1)
+**Decided:** A transaction is forwarded as an expense only if, in addition to DD-3's
+settled+debit check, its `amount` is **strictly greater than zero**. Enable Banking
+returns `amount` as a non-negative decimal string (see Data Model notes), so this
+excludes exactly the zero-amount case — no negative amounts are expected once the sign
+has been normalised by the adapter. Zero-amount settled debits (observed in practice)
+are not expenses and must not reach the Processor. This extends the same "processable
+expense" predicate on the `Transaction` domain model that DD-3 established (settled +
+debit + positive amount), rather than adding a separate filter elsewhere; non-matching
+transactions are dropped the same way — silently, not an error, not marked processed.
+
 ---
 
 ## Data Model — internal `Transaction`
@@ -113,7 +124,7 @@ are internal and stable; the Enable Banking mapping lives in the adapter.
 |-------|------|--------------------------|-----------------------|
 | `id` | string | Unique identifier; idempotency key (FR-13, TR-7) | `transaction_id`, else a derived hash — see finding below |
 | `description` | string | Merchant / ignore matching (FR-3, FR-4); substring suggestion (FR-9) | `remittance_information` (joined), fallback `creditor.name` / `entry_reference` |
-| `amount` | `Decimal` | Written to expense sheet (FR-12); notifications (FR-5) | `transaction_amount.amount` (non-negative string) |
+| `amount` | `Decimal` | Written to expense sheet (FR-12); notifications (FR-5); positive-amount filter (FR-1, DD-6) | `transaction_amount.amount` (non-negative string) |
 | `currency` | string | Currency guard vs. `expected_currency` | `transaction_amount.currency` |
 | `booking_date` | date | Routes to monthly sheet (FR-12); shown in notifications | `booking_date`, fallback `value_date` / `transaction_date` |
 | `status` | enum | Settled-debit filter (FR-1) | `status` (`BOOK`→BOOKED, `PDNG`→PENDING, else OTHER) |
@@ -125,6 +136,9 @@ Notes:
   sign is carried only by `credit_debit_indicator`. `amount` is stored as a positive
   `Decimal` and direction lives in `direction`. The expense sheet (FR-12) receives the
   positive amount.
+- **Zero-amount exclusion (DD-6):** a strictly-positive `amount` is required for a
+  transaction to be treated as an expense; zero-amount settled debits are excluded
+  alongside the existing settled+debit check (FR-1).
 - **Date (resolved):** monthly-sheet routing uses `booking_date` (FR-12); dates are
   date-only, UTC-assumed. Value/transaction date are fallbacks only.
 - **Debit spelling (resolved):** Enable Banking's validated enum is exactly
@@ -199,13 +213,15 @@ Pages (`docs/{privacy,terms,callback}.html`, served from `main` `/docs`).
 Package [`src/expenses/poller/`](../../src/expenses/poller/):
 - [`enable_banking/auth.py`](../../src/expenses/poller/enable_banking/auth.py) — RS256 JWT bearer.
 - [`enable_banking/gateway.py`](../../src/expenses/poller/enable_banking/gateway.py) — transactions fetch + `continuation_key` paging.
-- [`enable_banking/adapter.py`](../../src/expenses/poller/enable_banking/adapter.py) — anti-corruption mapping + settled-debit filter.
+- [`enable_banking/adapter.py`](../../src/expenses/poller/enable_banking/adapter.py) — anti-corruption mapping; `is_expense()` delegates to the domain predicate below.
+- [`../domain/transaction.py`](../../src/expenses/domain/transaction.py) — `Transaction.is_expense` (DD-3 settled+debit, DD-6 amount > 0) is the single "processable expense" predicate the adapter and poller both use.
 - [`poller.py`](../../src/expenses/poller/poller.py) — one poll cycle (map → filter → dedup → sink).
 - [`scheduler.py`](../../src/expenses/poller/scheduler.py) — non-overlapping interval loop (DD-1).
 - [`cli.py`](../../src/expenses/poller/cli.py) — `expenses-poll`, the one-shot run that reports the live-API findings above. Defaults to the rolling lookback window; `--month YYYY-MM` or `--from`/`--to YYYY-MM-DD` inspect an arbitrary window instead (read-only — it never goes through the Processor, so nothing is categorized/written/marked for that window).
 
-Tests in [`tests/`](../../tests/) cover adapter mapping, the settled-debit filter,
-derived-id determinism, cursor pagination, poll-cycle filtering, scheduler
+Tests in [`tests/`](../../tests/) cover adapter mapping, the settled+debit+positive-amount
+filter (including a zero-amount settled debit, DD-6), derived-id determinism, cursor
+pagination, poll-cycle filtering (including the zero-amount case end to end), scheduler
 non-overlap/error-resilience, and `expenses-poll`'s window resolution
 (`tests/test_poller_cli.py`).
 

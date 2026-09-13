@@ -53,6 +53,11 @@ class Transaction:
     raw: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @property
-    def is_settled_debit(self) -> bool:
-        """FR-1: only settled debit transactions represent processable expenses."""
-        return self.status is TransactionStatus.BOOKED and self.direction is Direction.DEBIT
+    def is_expense(self) -> bool:
+        """FR-1: only settled, debit, strictly-positive-amount transactions are
+        processable expenses (DD-3: settled+debit; DD-6: amount > 0)."""
+        return (
+            self.status is TransactionStatus.BOOKED
+            and self.direction is Direction.DEBIT
+            and self.amount > 0
+        )

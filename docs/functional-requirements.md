@@ -4,7 +4,12 @@
 
 The system shall periodically retrieve new transactions from the Open Banking provider (Enable Banking).
 
-Only settled debit transactions representing expenses shall be processed.
+Only settled debit transactions representing expenses shall be processed:
+
+- the transaction shall be settled (booked);
+- the transaction shall be a debit;
+- the transaction amount shall be strictly positive. Zero-amount transactions are not
+  expenses and shall be excluded.
 
 Transactions already processed shall not be processed again.
 

@@ -49,6 +49,18 @@ def booked_credit() -> dict:
 
 
 @pytest.fixture
+def zero_amount_debit() -> dict:
+    return {
+        "transaction_id": "tx-1004",
+        "booking_date": "2026-07-23",
+        "transaction_amount": {"currency": "EUR", "amount": "0.00"},
+        "credit_debit_indicator": "DBIT",
+        "status": "BOOK",
+        "remittance_information": ["AUTHORIZATION HOLD"],
+    }
+
+
+@pytest.fixture
 def debit_without_id() -> dict:
     return {
         "entry_reference": "REF-XYZ",
