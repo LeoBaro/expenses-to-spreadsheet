@@ -60,16 +60,18 @@ docker run -d \
 The project version in `pyproject.toml` is the single source of truth for the image
 tag — no separate versioning scheme to maintain:
 
-```
-VERSION=$(uv version --short)              # e.g. 0.1.0
-docker build -t leofaber/expenses-to-spreadsheet:"$VERSION" -t leofaber/expenses-to-spreadsheet:latest .
-```
-
 Bumping the version first (creates a new commit-worthy change to `pyproject.toml`/`uv.lock`):
 
 ```
 uv version --bump patch   # or --bump minor / --bump major
 ```
+
+```
+VERSION=$(uv version --short)              # e.g. 0.1.0
+docker build -t leofaber/expenses-to-spreadsheet:"$VERSION" -t leofaber/expenses-to-spreadsheet:latest .
+```
+
+
 
 Push (requires `docker login` once per machine):
 
