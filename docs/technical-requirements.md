@@ -13,7 +13,7 @@ in its own file under [technical-requirements/](technical-requirements/).
 
 | TR | Component | Functional Requirements | Non-functional |
 |----|-----------|-------------------------|----------------|
-| [TR-0](technical-requirements/TR-0-app-bootstrap-and-configuration.md) | Application Bootstrap & Configuration | FR-2 | NFR-1, NFR-7, NFR-8 |
+| [TR-0](technical-requirements/TR-0-app-bootstrap-and-configuration.md) ✅ | Application Bootstrap & Configuration | FR-2 | NFR-1, NFR-7, NFR-8 |
 | [TR-1](technical-requirements/TR-1-transaction-poller.md) ✅ | Transaction Poller | FR-1 | NFR-6, NFR-7 |
 | [TR-2](technical-requirements/TR-2-transaction-processor.md) | Transaction Processor | FR-1, FR-4, FR-5, FR-6 | — |
 | [TR-3](technical-requirements/TR-3-categorization-engine.md) | Categorization Engine | FR-3, FR-4, FR-5, FR-9, FR-10 | NFR-5 |
@@ -35,3 +35,6 @@ the individual TRs. Each is expanded in the relevant file's _Open Questions_.
   expired (owned by [TR-6](technical-requirements/TR-6-telegram-bot-and-conversation.md)).
 - **Write / mark-processed ordering** — the crash-consistency contract behind FR-13
   idempotency (shared by [TR-2](technical-requirements/TR-2-transaction-processor.md) and [TR-7](technical-requirements/TR-7-state-manager.md)).
+- **Docker packaging & state durability (NFR-7)** — single-image build (`python:3.12-slim`
+  + `uv`), secrets/config mounted at runtime (never baked in), and a required durable
+  volume for the state file (owned by [TR-0](technical-requirements/TR-0-app-bootstrap-and-configuration.md); referenced by [TR-1](technical-requirements/TR-1-transaction-poller.md)'s internal-scheduler rationale and [TR-7](technical-requirements/TR-7-state-manager.md)'s idempotency guarantee).

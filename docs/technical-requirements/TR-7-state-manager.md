@@ -132,13 +132,17 @@ Public API (conceptual):
 ---
 
 ## Dependencies
-- TR-0 — state-file path / naming scheme (DD-4), and the durable volume it lives on.
+- TR-0 — state-file path / naming scheme, and the durable volume it lives on (Docker packaging decision, NFR-7).
 - Consumed by TR-1, TR-2, TR-6.
 
 ---
 
 ## Risks & Assumptions
-- **Assumption:** the container has a **durable, persistent volume** for the state file that survives restarts/redeploys (NFR-7). If storage is ephemeral, idempotency is lost across restarts and the whole guarantee collapses — this must be ensured at deployment.
+- ✅ **Durable volume for the state file (NFR-7)** — no longer just an assumption:
+  [TR-0's Docker packaging decision](TR-0-app-bootstrap-and-configuration.md#design-decisions)
+  requires a named/bind volume for `state_file_path` that survives restarts/redeploys.
+  If a deployment omits it anyway, idempotency is lost across restarts — TR-0 tracks
+  that as an accepted infrastructure-layer risk it cannot enforce in code.
 - **Assumption:** `Transaction.id` is stable and unique. Per the [TR-1 finding](TR-1-transaction-poller.md#finding--provider-transaction-id-is-not-always-stable-affects-tr-7), some banks omit the provider `transaction_id`, in which case the poller supplies a **derived hash** (`id_is_derived = true`). A derived id is only as stable as the fields it hashes; if the bank's payload for the "same" transaction varies between polls, dedup fails and a duplicate expense can be written. **Mock-validated (2026-07-26):** against the Enable Banking Mock ASPSP — which never returns a `transaction_id` — derived ids were identical across repeated polls, so the derived-id path is the *primary* path in testing and is empirically stable there. This must still be re-validated against production Revolut.
 - **Concurrency (resolved):** `mark_processed`/`is_processed` are **synchronous**, so within the single asyncio event loop a call runs to completion without yielding — no interleaving, no lock needed. (A lock would only be required if called from multiple OS threads, which the design does not do.)
 - **Accepted risk:** the at-least-once duplicate window in DD-3.
