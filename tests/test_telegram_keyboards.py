@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from expenses.telegram_bot.keyboards import DONE_ACTION, SKIP_ACTION, options_keyboard
+from expenses.telegram_bot.keyboards import (
+    BACK_ACTION,
+    DONE_ACTION,
+    NEXT_MONTH_ACTION,
+    PREV_MONTH_ACTION,
+    SKIP_ACTION,
+    options_keyboard,
+)
 
 
 def test_one_button_per_option_stacked():
@@ -55,3 +62,29 @@ def test_skip_without_done():
     rows = markup.inline_keyboard
     assert len(rows) == 3  # two options + Skip (no Done)
     assert rows[-1][0].callback_data == f"mer:{SKIP_ACTION}"
+
+
+def test_month_navigation_shares_one_row_and_back_is_last():
+    markup = options_keyboard(
+        ["Categorize", "Ignore"],
+        tag="act",
+        prev_label="< Prev month",
+        next_label="Next month >",
+        back_label="↩ Back",
+    )
+    rows = markup.inline_keyboard
+    assert len(rows) == 4  # two options + nav row + Back
+    assert [b.callback_data for b in rows[2]] == [f"act:{PREV_MONTH_ACTION}", f"act:{NEXT_MONTH_ACTION}"]
+    assert rows[-1][0].callback_data == f"act:{BACK_ACTION}"
+
+
+def test_single_month_button_when_at_the_edge():
+    markup = options_keyboard(["A"], tag="act", next_label="Next month >")
+    rows = markup.inline_keyboard
+    assert [b.callback_data for b in rows[1]] == [f"act:{NEXT_MONTH_ACTION}"]
+
+
+def test_back_comes_after_done_and_skip():
+    markup = options_keyboard(["A"], tag="mer", done_label="✓", skip_label="⏭", back_label="↩")
+    data = [row[0].callback_data for row in markup.inline_keyboard]
+    assert data == ["mer:0", f"mer:{DONE_ACTION}", f"mer:{SKIP_ACTION}", f"mer:{BACK_ACTION}"]

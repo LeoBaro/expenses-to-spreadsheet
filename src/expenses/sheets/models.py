@@ -26,3 +26,6 @@ class ExpenseRow:
     amount: Decimal  # C — positive amount
     primary: str  # D
     secondary: str  # E
+    # Destination month sheet (1–12) when the user moved the expense to another month
+    # (FR-12); ``None`` → the booking date's month. Column B always keeps ``date``.
+    sheet_month: int | None = None

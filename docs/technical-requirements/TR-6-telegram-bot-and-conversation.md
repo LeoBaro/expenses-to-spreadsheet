@@ -6,7 +6,7 @@
 > and relays taps. Callback keying was finalized here as `f"{step}:{index}"`.
 
 ## Traceability
-- Functional requirements: FR-5 (auto-categorization notification), FR-6 (unknown-merchant workflow), FR-7 (categorize workflow), FR-8 (ignore workflow)
+- Functional requirements: FR-5 (auto-categorization notification), FR-6 (unknown-merchant workflow), FR-7 (categorize workflow), FR-8 (ignore workflow), FR-15 (undo)
 - Non-functional requirements: NFR-6 (interactions complete within seconds)
 - Architecture: [Telegram Bot](../architecture.md) (§6)
 
@@ -61,6 +61,7 @@ user.
 - On unknown transaction, present amount/date/description + Categorize/Ignore actions (FR-6).
 - Categorize flow (FR-7): present Primary → Secondary → merchant-substring options and return each selection to the Processor (the Processor performs the Support update, cache refresh, expense write and mark-processed).
 - Ignore flow (FR-8): present ignore-pattern candidates and return the selection to the Processor (which appends the pattern, refreshes cache, marks processed).
+- Render the Back (FR-15) and **< Prev month** / **Next month >** (FR-6.4) buttons the Processor asks for, and relay their taps like any other.
 
 ## Design Decisions
 - **Library (decided): python-telegram-bot (PTB v22).** Async; the bot wires PTB
@@ -82,6 +83,12 @@ user.
   (`edit_options`) with a checkmark. Skip is always shown; Done appears once ≥1 word is
   picked. The **ignore** step is single-select but also carries a `skip_label` (ignore
   this one without a pattern). See TR-2 DD-7/DD-8.
+- **Navigation buttons (decided):** `send_options`/`edit_options` also take
+  `back_label` (appends `f"{step}:back"` as the last row) and `prev_label`/`next_label`
+  (`f"{step}:prev"` / `f"{step}:next"`, side by side on one row after the options). Row
+  order: options, month navigation, Done, Skip, Back. `send_options` returns the sent
+  message id so the Processor can keep one live prompt per conversation and edit it in
+  place (TR-2 DD-9/10/11). The Bot only renders these; what they do lives in TR-2.
 - **Conversation state (decided elsewhere):** the *workflow* state (which transaction,
   step, partial selections) lives in the Processor (TR-2, `conversation.py`); the bot
   only routes a callback back to it.
@@ -97,10 +104,12 @@ The Bot itself is stateless beyond PTB's own machinery. The conversation/session
 `ConversationOrchestrator` (`Session`), not here. Contracts at the boundary:
 `TelegramUpdateHandler` (inbound: `on_callback(chat_id, message_id, data, callback_id)`,
 `on_message(chat_id, text)`) and the outbound presenter surface (`send_message`,
-`send_options(chat_id, text, options, *, tag, done_label=None, skip_label=None)`, and
-`edit_options(chat_id, message_id, …)` for in-place re-render), where each button's
-`callback_data` is `f"{tag}:{index}"` (or `f"{tag}:done"` / `f"{tag}:skip"` for the
-multi-select confirm / skip actions).
+`send_options(chat_id, text, options, *, tag, done_label=None, skip_label=None,
+back_label=None, prev_label=None, next_label=None) -> message_id`, and
+`edit_options(chat_id, message_id, …)` with the same labels for in-place re-render),
+where each button's `callback_data` is `f"{tag}:{index}"` (or `f"{tag}:done"` /
+`f"{tag}:skip"` / `f"{tag}:back"` / `f"{tag}:prev"` / `f"{tag}:next"` for the action
+buttons).
 
 ## Interfaces
 - Inbound: Telegram updates (callbacks) from the user; notification + prompt requests from the Transaction Processor (TR-2).
@@ -135,12 +144,13 @@ clashing with PTB's `telegram` package):
   Protocol (implemented by TR-2's `ConversationOrchestrator`) + `LoggingUpdateHandler`
   fallback used when Telegram is unconfigured.
 - [`keyboards.py`](../../src/expenses/telegram_bot/keyboards.py) — index-keyed
-  inline-keyboard builder (`callback_data = f"{tag}:{index}"`).
+  inline-keyboard builder (`callback_data = f"{tag}:{index}"`) plus the Done / Skip /
+  Back / month-navigation action buttons.
 - [`telegram_cli.py`](../../src/expenses/telegram_cli.py) — `expenses-telegram run` (poll;
   `/start` reveals your chat id) and `send-test` (push a two-button prompt).
 
 Tests: [`tests/test_telegram_keyboards.py`](../../tests/test_telegram_keyboards.py) covers
-the index-keyed builder; the interactive workflow itself is tested via TR-2's
+the index-keyed builder and the action-button rows/order; the interactive workflow itself is tested via TR-2's
 [`tests/test_conversation.py`](../../tests/test_conversation.py).
 
 Config: `EXPENSES_TELEGRAM_BOT_TOKEN`, `EXPENSES_TELEGRAM_CHAT_ID`. Tests cover the

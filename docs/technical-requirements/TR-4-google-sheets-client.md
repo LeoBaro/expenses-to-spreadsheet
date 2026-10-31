@@ -61,7 +61,8 @@ coordinates.
 ## Responsibilities
 - Read the Support sheet (Primary A, Secondary B, Merchant Substrings C) and Ignore patterns sheet (FR-2).
 - Append a merchant substring to the correct Support row (Primary+Secondary), preserving the comma-separated list and rejecting duplicates (FR-11).
-- Append an expense row to the month sheet derived from the booking date (FR-12).
+- Append an expense row to the month sheet derived from the booking date, or to the
+  month the user selected (`ExpenseRow.sheet_month`, FR-12 / FR-6.4).
 - Never mutate the Support layout beyond Column C (architecture append-only principle).
 
 ## Design Decisions
@@ -86,8 +87,10 @@ coordinates.
 ## Data Model / Contracts
 - **Read (feeds TR-5):** `SupportRow(primary, secondary, substrings: list[str])` and
   `list[str]` ignore patterns.
-- **Write (from TR-2):** `ExpenseRow(name, date, amount: Decimal, primary, secondary)`
-  → month sheet columns A–E (FR-12); `add_merchant_substring(primary, secondary,
+- **Write (from TR-2):** `ExpenseRow(name, date, amount: Decimal, primary, secondary,
+  sheet_month: int | None = None)` → month sheet columns A–E (FR-12). `sheet_month`
+  (1–12) overrides the destination sheet; `None` → the booking date's month. Column B is
+  always `date`; `add_merchant_substring(primary, secondary,
   substring)` (FR-11); and `add_ignore_pattern(pattern)` → append to the Ignore sheet
   (FR-8.4), stored lowercase, case-insensitive dedupe (mirrors FR-11).
 
@@ -120,5 +123,6 @@ Package [`src/expenses/sheets/`](../../src/expenses/sheets/):
 - [`sheets_cli.py`](../../src/expenses/sheets_cli.py) — `expenses-sheets check`, read-only setup validation.
 
 Tests in [`tests/`](../../tests/) cover reader parsing (header/blank handling), expense
-append (numeric amount, ISO date, missing-sheet failure), FR-11 append + case-insensitive
+append (numeric amount, ISO date, missing-sheet failure, `sheet_month` override keeping
+the booking date), FR-11 append + case-insensitive
 dedupe + unknown-category error, and month mapping.

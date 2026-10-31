@@ -14,6 +14,11 @@ CALLBACK_DATA_MAX = 64
 # one. Both are distinct from the numeric option indices.
 DONE_ACTION = "done"
 SKIP_ACTION = "skip"
+# Navigation suffixes: BACK undoes the previous choice (returns to the prior question);
+# PREV/NEXT move the expense to the previous/next month's sheet.
+BACK_ACTION = "back"
+PREV_MONTH_ACTION = "prev"
+NEXT_MONTH_ACTION = "next"
 
 
 def options_keyboard(
@@ -22,6 +27,9 @@ def options_keyboard(
     tag: str = "",
     done_label: str | None = None,
     skip_label: str | None = None,
+    back_label: str | None = None,
+    prev_label: str | None = None,
+    next_label: str | None = None,
 ) -> InlineKeyboardMarkup:
     """One button per option, stacked vertically.
 
@@ -36,13 +44,27 @@ def options_keyboard(
     button (``f"{tag}:{SKIP_ACTION}"``) — used by the additive multi-select step to
     finalize a selection or proceed without one. Only the callback data is
     length-constrained; the label text (which may preview the built rule) is not.
+
+    ``prev_label``/``next_label`` add month-navigation buttons side by side on one row
+    (``f"{tag}:{PREV_MONTH_ACTION}"`` / ``f"{tag}:{NEXT_MONTH_ACTION}"``), and
+    ``back_label`` appends a last-row Back button (``f"{tag}:{BACK_ACTION}"``).
+    Row order: options, month navigation, Done, Skip, Back.
     """
     rows = [
         [InlineKeyboardButton(text=option, callback_data=f"{tag}:{index}")]
         for index, option in enumerate(options)
     ]
+    nav = []
+    if prev_label is not None:
+        nav.append(InlineKeyboardButton(text=prev_label, callback_data=f"{tag}:{PREV_MONTH_ACTION}"))
+    if next_label is not None:
+        nav.append(InlineKeyboardButton(text=next_label, callback_data=f"{tag}:{NEXT_MONTH_ACTION}"))
+    if nav:
+        rows.append(nav)
     if done_label is not None:
         rows.append([InlineKeyboardButton(text=done_label, callback_data=f"{tag}:{DONE_ACTION}")])
     if skip_label is not None:
         rows.append([InlineKeyboardButton(text=skip_label, callback_data=f"{tag}:{SKIP_ACTION}")])
+    if back_label is not None:
+        rows.append([InlineKeyboardButton(text=back_label, callback_data=f"{tag}:{BACK_ACTION}")])
     return InlineKeyboardMarkup(rows)

@@ -107,6 +107,31 @@ If no merchant rule matches:
 3. Present two actions:
    - **Categorize**
    - **Ignore**
+4. Present two month-navigation actions, **< Prev month** and **Next month >**, which
+   change the month the expense is recorded in (see FR-12). The prompt shall show the
+   selected month and, when it differs, the booking month. Navigation is limited to
+   January–December of the current spreadsheet's year (one spreadsheet per year): there
+   is no **< Prev month** in January and no **Next month >** in December. The selected
+   month only matters for **Categorize**; **Ignore** writes no expense.
+
+---
+
+-------------|-----------------|
+| Primary Category (FR-7.1) | Categorize / Ignore (FR-6) |
+| Secondary Category (FR-7.2) | Primary Category |
+| Merchant rule (FR-7.4) | Secondary Category |
+| Ignore pattern (FR-8.3) | Categorize / Ignore (FR-6) |
+
+The undone choice is forgotten (e.g. words selected for a merchant rule are cleared).
+The selected month (FR-6.4) is kept.
+
+The **final** choice — creating a rule/pattern or **Skip** (FR-7.4, FR-8.3) — cannot be
+undone: it is the only step that writes to the spreadsheet. No earlier step writes
+anything, so Back never has to roll back data.
+
+The merchant-rule and ignore-pattern questions shall be shown even when there are no
+candidates (offering only **Skip** and **Back**), so the previous choice can always be
+undone.
 
 ---
 
@@ -228,7 +253,10 @@ After a transaction has been categorized (automatically or manually), the applic
 
 The sheet name shall correspond to the transaction month.
 
-The destination sheet shall be determined from the transaction booking date.
+The destination sheet shall be determined from the transaction booking date, unless the
+user selected a different month in the unknown-merchant workflow (FR-6.4), in which case
+the expense is written to that month's sheet. The Date column always holds the booking
+date.
 
 The following values shall be written:
 
@@ -279,3 +307,14 @@ The cache shall be rebuilt:
 - on application startup;
 - immediately after every successful update to the Support sheet;
 - immediately after every successful update to the Ignore patterns sheet.
+
+---
+
+## FR-15. Undo a Workflow Choice
+
+Every question of the interactive workflow (FR-6 → FR-8) after the first one shall
+offer a **Back** action that undoes the choice made on the previous question and
+presents that question again:
+
+| Current question | Back returns to |
+|--

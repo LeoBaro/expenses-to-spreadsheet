@@ -15,5 +15,12 @@ MONTH_SHEETS: tuple[str, ...] = (
 )
 
 
+def month_name(month: int) -> str:
+    """Sheet name for a month number (1–12)."""
+    if not 1 <= month <= 12:
+        raise ValueError(f"month must be 1–12, got {month!r}")
+    return MONTH_SHEETS[month - 1]
+
+
 def month_sheet_name(booking_date: date) -> str:
-    return MONTH_SHEETS[booking_date.month - 1]
+    return month_name(booking_date.month)

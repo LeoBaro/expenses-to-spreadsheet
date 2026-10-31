@@ -6,7 +6,7 @@
 > orchestrator), which owns all workflow state.
 
 ## Traceability
-- Functional requirements: FR-1, FR-4, FR-5, FR-6 (orchestration of the processing flow)
+- Functional requirements: FR-1, FR-4, FR-5, FR-6, FR-12 (month override), FR-15 (orchestration of the processing flow)
 - Non-functional requirements: —
 - Architecture: [Transaction Processor](../architecture.md) (§2)
 
@@ -110,12 +110,33 @@ external access. The round trip to the Bot (present options → relay selection)
   **no** ignore pattern. Both skip the cache refresh — for a one-off the user doesn't want
   to generalize. Each is the same terminal as its empty-candidate fallback
   (`substring=None` / `pattern=None`), just user-initiated.
-- **Empty-candidate fallbacks (decided):** if no merchant substrings can be suggested
-  (FR-9), the expense is still recorded with the chosen category (the user's work isn't
-  lost) but **no rule** is created; if no ignore patterns can be suggested (FR-10), the
-  transaction is still marked processed (FR-8's core effect) with **no pattern** added.
-  A missing Primary/Secondary list is a Support-sheet misconfiguration → the session
-  aborts *without* marking processed, so it is retried once the sheet is fixed.
+- **Empty-candidate fallbacks (decided, revised by DD-10):** if no merchant substrings
+  (FR-9) or ignore patterns (FR-10) can be suggested, the step is **still shown**, with
+  only Skip and Back. Skip then records the expense without a rule / ignores the
+  transaction without a pattern, as before — the only change is that the user confirms
+  it, so the previous choice stays undoable (FR-15). A missing Primary/Secondary list is
+  a Support-sheet misconfiguration → the session aborts *without* marking processed, so
+  it is retried once the sheet is fixed.
+- **One live prompt per conversation (decided, DD-9):** the FR-6 prompt is the only one
+  sent as a new message; `send_options` returns its message id, kept on the `Session`.
+  Every later step, Back, and month change **edits that message in place**, and each
+  prompt repeats the transaction details. A callback is accepted only from that live
+  message (in addition to the DD-6 step-tag check), so buttons left on older prompts —
+  including those of earlier transactions — are inert. If the presenter cannot report
+  an id (`None`), the message check is skipped and the step tag alone applies.
+- **Undo — Back (decided, DD-10, FR-15):** PRIMARY, SECONDARY, MERCHANT and IGNORE
+  prompts carry a `f"{step}:back"` button. Back re-asks the previous question
+  (PRIMARY/IGNORE → ACTION, SECONDARY → PRIMARY, MERCHANT → SECONDARY) and clears the
+  choice made there (`primary`/`secondary`/`selected`). Since nothing is written before
+  the final step, Back is purely in-memory. The final step (Done, a pattern tap, Skip)
+  is terminal and cannot be undone.
+- **Month override (decided, DD-11, FR-6.4):** the ACTION prompt carries
+  `f"act:prev"` / `f"act:next"` buttons that shift `Session.month` (starting at the
+  booking month) within 1–12; a button is hidden at its edge and an out-of-range tap is
+  ignored. The month survives Back. On categorize, `ExpenseRow.sheet_month` is set only
+  when the month was moved (otherwise `None`, so the default path is unchanged); the
+  Date column keeps the booking date. The month is shown on the categorize prompts and
+  in the confirmation; Ignore ignores it.
 - **Decoupling:** both paths depend only on Protocols — the automatic path on `Engine`,
   `ExpenseWriter`, `ProcessedState`, `Notifier`, `UnknownTransactionHandler`; the
   conversation on `ConversationEngine`, `RuleWriter`, `RefreshableCache`, `ProcessedState`,
@@ -166,5 +187,9 @@ The five Protocols it needs (`ConversationEngine`, `RuleWriter`, `RefreshableCac
 
 Tests in [`tests/test_conversation.py`](../../tests/test_conversation.py) cover the
 categorize and ignore happy paths, stale/out-of-range/malformed and no-session
-callbacks, the empty-candidate fallbacks, the abort-on-misconfig path, and the
-queue/drain behaviour (queue-then-begin-next, dedup, drain-until-empty).
+callbacks, the empty-candidate prompts, the abort-on-misconfig path, the
+queue/drain behaviour (queue-then-begin-next, dedup, drain-until-empty), Back from
+every step (and that the first and final choices can't be undone), in-place editing of a
+single live prompt with taps on superseded messages rejected, and the month override
+(next/prev, return to booking month, Jan/Dec edges, month kept across Back, month
+buttons only on the first question, Ignore unaffected).

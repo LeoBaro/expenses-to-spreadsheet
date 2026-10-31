@@ -15,11 +15,11 @@ in its own file under [technical-requirements/](technical-requirements/).
 |----|-----------|-------------------------|----------------|
 | [TR-0](technical-requirements/TR-0-app-bootstrap-and-configuration.md) ✅ | Application Bootstrap & Configuration | FR-2 | NFR-1, NFR-7, NFR-8 |
 | [TR-1](technical-requirements/TR-1-transaction-poller.md) ✅ | Transaction Poller | FR-1 | NFR-6, NFR-7 |
-| [TR-2](technical-requirements/TR-2-transaction-processor.md) | Transaction Processor | FR-1, FR-4, FR-5, FR-6 | — |
+| [TR-2](technical-requirements/TR-2-transaction-processor.md) | Transaction Processor | FR-1, FR-4, FR-5, FR-6, FR-15 | — |
 | [TR-3](technical-requirements/TR-3-categorization-engine.md) | Categorization Engine | FR-3, FR-4, FR-5, FR-9, FR-10 | NFR-5 |
 | [TR-4](technical-requirements/TR-4-google-sheets-client.md) | Google Sheets Client | FR-2, FR-11, FR-12 | NFR-2, NFR-4 |
 | [TR-5](technical-requirements/TR-5-cache-manager.md) | Cache Manager | FR-2, FR-14 | NFR-4, NFR-5 |
-| [TR-6](technical-requirements/TR-6-telegram-bot-and-conversation.md) | Telegram Bot & Conversation | FR-5, FR-6, FR-7, FR-8 | NFR-6 |
+| [TR-6](technical-requirements/TR-6-telegram-bot-and-conversation.md) | Telegram Bot & Conversation | FR-5, FR-6, FR-7, FR-8, FR-15 | NFR-6 |
 | [TR-7](technical-requirements/TR-7-state-manager.md) ✅ | State Manager | FR-13 | NFR-3, NFR-7 |
 
 ## Cross-cutting design decisions

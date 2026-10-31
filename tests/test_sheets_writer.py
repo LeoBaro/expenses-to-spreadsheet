@@ -58,6 +58,19 @@ def test_append_expense_missing_month_sheet_raises():
     api.values.return_value.append.assert_not_called()
 
 
+def test_append_expense_sheet_month_overrides_destination_but_keeps_date():
+    api = _api()
+    writer = SheetsWriter(api, "sid")
+
+    writer.append_expense(
+        ExpenseRow("RENT", date(2026, 7, 25), Decimal("800"), "Housing", "Rent", sheet_month=12)
+    )
+
+    _, kwargs = api.values.return_value.append.call_args
+    assert kwargs["range"] == "'Dec'!A:E"
+    assert kwargs["body"]["values"][0][1] == "2026-07-25"  # Date column = booking date
+
+
 # No header row in the real Support sheet.
 _SUPPORT = [
     ["Housing", "Electricity", "nwg, sorgenia"],

@@ -12,7 +12,7 @@ from expenses.sheets._api import get_values
 from expenses.sheets.a1 import a1_range
 from expenses.sheets.errors import RuleRowNotFoundError, SheetNotFoundError
 from expenses.sheets.models import ExpenseRow
-from expenses.sheets.months import month_sheet_name
+from expenses.sheets.months import month_name, month_sheet_name
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,12 @@ class SheetsWriter:
         self._sheet_titles: set[str] | None = None
 
     def append_expense(self, expense: ExpenseRow) -> None:
-        """Append a row to the monthly sheet derived from the booking date (FR-12)."""
-        sheet = month_sheet_name(expense.date)
+        """Append a row to the monthly sheet (FR-12): the booking date's month, unless
+        the user moved the expense to another month (``sheet_month``)."""
+        if expense.sheet_month is not None:
+            sheet = month_name(expense.sheet_month)
+        else:
+            sheet = month_sheet_name(expense.date)
         self._ensure_sheet_exists(sheet)
         # USER_ENTERED so the ISO date parses to a real date; amount is sent as a
         # numeric value (locale-proof — a number is stored as a number).

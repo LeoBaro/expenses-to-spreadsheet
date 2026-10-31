@@ -100,18 +100,31 @@ class ExpenseBot:
         tag: str = "",
         done_label: str | None = None,
         skip_label: str | None = None,
-    ) -> None:
-        """Send a prompt with an inline keyboard of choices (FR-6/7/8).
+        back_label: str | None = None,
+        prev_label: str | None = None,
+        next_label: str | None = None,
+    ) -> int:
+        """Send a prompt with an inline keyboard of choices (FR-6/7/8) and return the
+        sent message's id (the Processor keeps it as the conversation's one live prompt).
 
         ``tag`` identifies the workflow step; each button's callback_data is
         ``f"{tag}:{index}"`` so the Processor can map a tap back to the option.
-        ``done_label``/``skip_label``, when set, append confirm / skip buttons
-        (multi-select steps)."""
-        await self._app.bot.send_message(
+        ``done_label``/``skip_label``/``back_label``/``prev_label``/``next_label``, when
+        set, append the matching action buttons (see ``options_keyboard``)."""
+        message = await self._app.bot.send_message(
             chat_id,
             text,
-            reply_markup=options_keyboard(options, tag=tag, done_label=done_label, skip_label=skip_label),
+            reply_markup=options_keyboard(
+                options,
+                tag=tag,
+                done_label=done_label,
+                skip_label=skip_label,
+                back_label=back_label,
+                prev_label=prev_label,
+                next_label=next_label,
+            ),
         )
+        return message.message_id
 
     async def edit_options(
         self,
@@ -123,16 +136,26 @@ class ExpenseBot:
         tag: str = "",
         done_label: str | None = None,
         skip_label: str | None = None,
+        back_label: str | None = None,
+        prev_label: str | None = None,
+        next_label: str | None = None,
     ) -> None:
-        """Re-render an existing prompt in place (used by the additive multi-select step
-        so toggling a word updates the same message instead of sending a new one)."""
+        """Re-render an existing prompt in place. Every conversation step after the
+        first, plus Back and month navigation, edits the same message instead of
+        sending a new one."""
         try:
             await self._app.bot.edit_message_text(
                 text,
                 chat_id=chat_id,
                 message_id=message_id,
                 reply_markup=options_keyboard(
-                    options, tag=tag, done_label=done_label, skip_label=skip_label
+                    options,
+                    tag=tag,
+                    done_label=done_label,
+                    skip_label=skip_label,
+                    back_label=back_label,
+                    prev_label=prev_label,
+                    next_label=next_label,
                 ),
             )
         except BadRequest as exc:
