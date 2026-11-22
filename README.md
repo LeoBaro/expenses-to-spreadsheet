@@ -17,6 +17,10 @@ for one-time bank-linking setup and `.env.example` for required configuration.
 
 ## Docker
 
+Deploying to a Raspberry Pi: `deploy/copy-to-pi.sh` copies the secrets, config and
+state over, and `deploy/docker-compose.yml` runs the container there. Step-by-step
+guide: [docs/raspberry-pi-deployment.md](docs/raspberry-pi-deployment.md).
+
 Build:
 
 ```

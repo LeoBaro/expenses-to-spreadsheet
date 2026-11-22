@@ -7,15 +7,15 @@ internal poll scheduler — the app then runs until interrupted.
 
 from __future__ import annotations
 
-import logging
 
 from expenses.config import Settings
+from expenses.logging_setup import configure_logging
 
 
 def main() -> None:
     import uvicorn
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    configure_logging()
     settings = Settings()
     uvicorn.run(
         "expenses.bootstrap.app:create_app",

@@ -1,0 +1,18 @@
+# Runs the published image on the Raspberry Pi. deploy/copy-to-pi.sh copies this file,
+# .env, secrets/ and state/ into the same directory on the Pi; run
+# `docker compose up -d` from there. See docs/raspberry-pi-deployment.md.
+services:
+  expenses:
+    image: leofaber/expenses-to-spreadsheet:latest
+    container_name: expenses
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./secrets:/app/secrets:ro
+      - ./state:/app/state
+    # Keep container logs from slowly filling the SD card.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

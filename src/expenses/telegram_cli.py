@@ -16,6 +16,7 @@ import logging
 from expenses.config import Settings
 from expenses.telegram_bot.bot import ExpenseBot
 from expenses.telegram_bot.ports import LoggingUpdateHandler
+from expenses.logging_setup import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def main() -> None:
     sub.add_parser("send-test", help="send a test message with inline buttons to the configured chat")
 
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    configure_logging()
     settings = Settings()
     if args.command == "run":
         _run(settings)

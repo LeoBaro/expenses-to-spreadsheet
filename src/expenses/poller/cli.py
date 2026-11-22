@@ -33,6 +33,7 @@ from expenses.config import Settings
 from expenses.poller.enable_banking import adapter
 from expenses.poller.enable_banking.auth import EnableBankingAuth
 from expenses.poller.enable_banking.gateway import EnableBankingGateway
+from expenses.logging_setup import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    configure_logging()
     asyncio.run(_run(_parse_args()))
 
 

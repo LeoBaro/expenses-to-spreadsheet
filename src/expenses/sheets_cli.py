@@ -17,6 +17,7 @@ from expenses.config import Settings
 from expenses.sheets.client import GoogleSheetsClient
 from expenses.sheets.models import ExpenseRow
 from expenses.sheets.months import month_sheet_name
+from expenses.logging_setup import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ def main() -> None:
     sub.add_parser("write-test", help="append ONE labelled test expense to the current month (writes!)")
 
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    configure_logging()
     if args.command == "check":
         asyncio.run(_check(Settings()))
     elif args.command == "write-test":
