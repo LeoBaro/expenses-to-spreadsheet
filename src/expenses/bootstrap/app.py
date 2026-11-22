@@ -9,15 +9,64 @@ happens on the internal scheduler.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
+from typing import TypeVar
 
 from fastapi import FastAPI
+from telegram.error import NetworkError, TelegramError
 
 from expenses.bootstrap.composition import Components, build_components
 from expenses.config import Settings
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+# Waits between attempts to reach Telegram at startup (~1.5 min in total). A network
+# blip right after the container starts (seen on the Pi's Wi-Fi) is retried instead of
+# failing startup; if Telegram stays unreachable, startup fails and Docker restarts
+# the container, as before.
+TELEGRAM_STARTUP_DELAYS: tuple[float, ...] = (2, 4, 8, 15, 30, 30)
+# Same idea for PTB's own bootstrap step inside start_polling (deleteWebhook).
+TELEGRAM_BOOTSTRAP_RETRIES = 5
+
+
+async def retry_on_network_error(
+    action: Callable[[], Awaitable[T]],
+    *,
+    what: str,
+    delays: Sequence[float] = TELEGRAM_STARTUP_DELAYS,
+    sleep: Callable[[float], Awaitable[object]] | None = None,
+) -> T:
+    """Run ``action``, retrying after each delay while it raises a Telegram
+    ``NetworkError`` (connection problems, timeouts). Any other error — e.g. an invalid
+    token — is raised immediately, and so is the last network error."""
+    sleep = sleep or asyncio.sleep  # looked up at call time (patchable in tests)
+    for attempt, delay in enumerate([*delays, None], start=1):
+        try:
+            return await action()
+        except NetworkError as exc:
+            if delay is None:
+                raise
+            # The message never contains the token; don't log the traceback.
+            logger.warning(
+                "%s: network error (attempt %d): %s — retrying in %ss", what, attempt, exc, delay
+            )
+            await sleep(delay)
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+def log_polling_error(error: TelegramError) -> None:
+    """PTB error_callback for get_updates: PTB retries by itself, so a network blip is
+    one warning line instead of a full traceback. Anything else (e.g. a Conflict from a
+    second instance using the same token) stays an error."""
+    if isinstance(error, NetworkError):
+        logger.warning("Telegram polling: network error, retrying: %s", error)
+    else:
+        logger.error("Telegram polling error: %s", error)
 
 
 async def _start_bot(components: Components) -> None:
@@ -26,9 +75,12 @@ async def _start_bot(components: Components) -> None:
     if components.bot is None:
         return
     app = components.bot.application
-    await app.initialize()
+    await retry_on_network_error(app.initialize, what="Telegram startup")
     await app.start()
-    await app.updater.start_polling()
+    await app.updater.start_polling(
+        bootstrap_retries=TELEGRAM_BOOTSTRAP_RETRIES,
+        error_callback=log_polling_error,
+    )
     logger.info("Telegram long polling started")
 
 

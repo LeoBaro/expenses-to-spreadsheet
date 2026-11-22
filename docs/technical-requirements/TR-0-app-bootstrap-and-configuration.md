@@ -157,6 +157,23 @@ seven (per the Composition Root decision).
   re-authorizes and updates `EXPENSES_EB_ACCOUNT_UID`. Non-auth HTTP errors propagate
   to the scheduler's own log-and-continue guard. A missing UID at startup is a config
   error and fails loud.
+- **Telegram startup is retried on network errors (decided, from the Pi deployment):**
+  on the Raspberry Pi's Wi-Fi, Telegram was unreachable for the first ~15 s after the
+  container started, so `Application.initialize()` (getMe) failed and the whole
+  startup exited (Docker then restarted it). `_start_bot` now wraps `initialize()` in
+  `retry_on_network_error`: on a PTB `NetworkError` (connect errors, timeouts) it waits
+  `TELEGRAM_STARTUP_DELAYS` (2, 4, 8, 15, 30, 30 s) between attempts and re-raises the
+  last error once they run out, so a lasting outage still fails startup and falls back
+  to Docker's restart. Any other error, such as `InvalidToken`, fails immediately:
+  that's a config problem, not a blip. `start_polling` gets `bootstrap_retries=5` for
+  PTB's own bootstrap call, and an `error_callback` that logs polling network errors
+  as a one-line warning (PTB retries them itself) while other polling errors, such as a
+  `Conflict` from a second instance, stay errors. No traceback is logged for either.
+- **HTTP request logging is off (decided, from the Pi deployment):** `httpx` and
+  `httpcore` are capped at WARNING by the shared
+  [`configure_logging`](../../src/expenses/logging_setup.py) used by every `expenses-*`
+  entry point. At INFO they logged every request URL, and Telegram URLs contain the
+  bot token.
 
 ## Data Model / Contracts
 The full settings schema lives in [`config.py`](../../src/expenses/config.py):
@@ -213,7 +230,12 @@ Package [`src/expenses/bootstrap/`](../../src/expenses/bootstrap/):
   (the Composition Root: constructs & injects the whole graph), the `Components`
   dataclass, and `PollCycle` (consent-expiry watchdog).
 - [`app.py`](../../src/expenses/bootstrap/app.py) — `create_app()` FastAPI factory +
-  `lifespan` (startup/shutdown ordering, Telegram in-loop start/stop) + `/health`.
+  `lifespan` (startup/shutdown ordering, Telegram in-loop start/stop with startup
+  network retries and one-line polling-error logging) + `/health`. Tested in
+  [`tests/test_bootstrap_telegram_startup.py`](../../tests/test_bootstrap_telegram_startup.py).
+- [`logging_setup.py`](../../src/expenses/logging_setup.py) — `configure_logging()`,
+  shared by every `expenses-*` entry point; keeps `httpx`/`httpcore` at WARNING so
+  request URLs (with the Telegram token) aren't logged.
 - [`cli.py`](../../src/expenses/bootstrap/cli.py) — `expenses-serve` runs the app under
   uvicorn (host/port from settings).
 - [`Dockerfile`](../../Dockerfile) (repo root) — the NFR-7 Docker packaging: a `uv`
