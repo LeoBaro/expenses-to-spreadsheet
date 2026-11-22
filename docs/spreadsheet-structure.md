@@ -41,6 +41,13 @@ Example:
 - Empty cells indicate that no merchant rule has yet been defined for that category.
 - Each Primary Category occupies a fixed block of rows.
 - Each Primary Category may contain **at most 10 Secondary Categories**.
+- The category table is **contiguous**: unused Secondary slots keep the Primary in
+  Column A, so there are no fully blank rows inside it. It ends at the first row whose
+  Columns A and B are both blank.
+- **Below** the category table, after a gap of blank rows, the sheet holds a separate
+  grouping table (header `Necessary | Lifestyle | Investments`, then one Primary
+  Category per cell, e.g. `Housing | Out | Savings`). It is **not** category data and
+  the application must not read it as such.
 
 
 ---

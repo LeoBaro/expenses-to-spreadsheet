@@ -13,6 +13,7 @@ from expenses.sheets.a1 import a1_range
 from expenses.sheets.errors import RuleRowNotFoundError, SheetNotFoundError
 from expenses.sheets.models import ExpenseRow
 from expenses.sheets.months import month_name, month_sheet_name
+from expenses.sheets.reader import support_table
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,9 @@ class SheetsWriter:
         if not normalized:
             raise ValueError("substring is empty")
 
-        values = self._get(a1_range(self._support_sheet, "A:C"))
+        # Only the category table is searched, so rows of other tables further down
+        # the sheet can never be mistaken for a category row.
+        values = support_table(self._get(a1_range(self._support_sheet, "A:C")))
         row_index = self._find_rule_row(values, primary, secondary)  # 0-based
 
         raw_c = values[row_index][2] if len(values[row_index]) > 2 else ""

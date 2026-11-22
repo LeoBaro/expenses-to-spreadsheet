@@ -80,6 +80,13 @@ coordinates.
   **lowercase**; list joined with `", "`; duplicates rejected **case-insensitively**.
 - **Month mapping (decided):** hard-coded English `Jan…Dec` (not locale-dependent
   `calendar`); missing month sheet → **fail loudly** (`SheetNotFoundError`).
+- **Support table boundary (decided):** the category table ends at the **first row
+  whose Columns A and B are both blank** (`reader.support_table`); everything below is
+  ignored by both the reader and the FR-11 row lookup. The real sheet has a
+  Necessary / Lifestyle / Investments grouping table further down; reading all of
+  `A:C` turned it into bogus categories (e.g. `Housing / Out` with rule `savings`). This
+  relies on the table having no blank spacer rows (true today: unused Secondary slots
+  keep the Primary in Column A).
 - **Read strategy:** Support (`A:C`) and Ignore (`A:A`) read directly. **Neither sheet
   has a header row — every row is data** (so `"Revolut"` in the Ignore sheet is a real
   pattern). No header-skipping logic.
@@ -122,7 +129,8 @@ Package [`src/expenses/sheets/`](../../src/expenses/sheets/):
 - [`months.py`](../../src/expenses/sheets/months.py) · [`models.py`](../../src/expenses/sheets/models.py) · [`errors.py`](../../src/expenses/sheets/errors.py).
 - [`sheets_cli.py`](../../src/expenses/sheets_cli.py) — `expenses-sheets check`, read-only setup validation.
 
-Tests in [`tests/`](../../tests/) cover reader parsing (header/blank handling), expense
+Tests in [`tests/`](../../tests/) cover reader parsing (no header, stop at the first
+blank row, tables below the category table ignored by reader and FR-11 lookup), expense
 append (numeric amount, ISO date, missing-sheet failure, `sheet_month` override keeping
 the booking date), FR-11 append + case-insensitive
 dedupe + unknown-category error, and month mapping.

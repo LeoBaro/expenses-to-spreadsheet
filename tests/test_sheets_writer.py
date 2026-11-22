@@ -71,6 +71,15 @@ def test_append_expense_sheet_month_overrides_destination_but_keeps_date():
     assert kwargs["body"]["values"][0][1] == "2026-07-25"  # Date column = booking date
 
 
+def test_add_merchant_substring_ignores_tables_below_the_category_table():
+    # "Housing / Out" exists only in the grouping table below the blank gap.
+    values = [["Housing", "Rent", ""], [], ["Housing", "Out", "Savings"]]
+    writer = SheetsWriter(_api(support_values=values), "sid")
+
+    with pytest.raises(RuleRowNotFoundError):
+        writer.add_merchant_substring("Housing", "Out", "x")
+
+
 # No header row in the real Support sheet.
 _SUPPORT = [
     ["Housing", "Electricity", "nwg, sorgenia"],
