@@ -68,20 +68,34 @@ uv version --bump patch   # or --bump minor / --bump major
 
 ```
 VERSION=$(uv version --short)              # e.g. 0.1.0
-docker build -t leofaber/expenses-to-spreadsheet:"$VERSION" -t leofaber/expenses-to-spreadsheet:latest .
 ```
 
+A plain `docker build` (like in the local dev section above) only produces an image
+for **your build machine's own architecture** (e.g. amd64 on a typical laptop/CI
+runner) — that image will not run on a Raspberry Pi or other ARM devices ("exec
+format error"). Publish a multi-arch image instead, via `buildx`.
 
-
-Push (requires `docker login` once per machine):
+One-time setup per build machine (skip if `docker buildx ls` already shows
+`linux/arm64`):
 
 ```
-docker login
-docker push leofaber/expenses-to-spreadsheet:"$VERSION"
-docker push leofaber/expenses-to-spreadsheet:latest
+docker run --privileged --rm tonistiigi/binfmt --install all   # register QEMU emulation
+docker buildx create --use                                     # a builder that can use it
 ```
 
-The `leofaber/expenses-to-spreadsheet` repository is created automatically on Docker
-Hub on first push if it doesn't exist yet.
+Build **and** push both architectures in one step (`docker login` once beforehand;
+multi-platform builds can only be published directly with `--push`, not built
+locally then pushed separately):
+
+```
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t leofaber/expenses-to-spreadsheet:"$VERSION" \
+  -t leofaber/expenses-to-spreadsheet:latest \
+  --push .
+```
+
+Add `linux/arm/v7` to `--platform` too if targeting a 32-bit Raspberry Pi OS instead
+of (or alongside) 64-bit. The `leofaber/expenses-to-spreadsheet` repository is
+created automatically on Docker Hub on first push if it doesn't exist yet.
 
 Full packaging rationale: [TR-0](docs/technical-requirements/TR-0-app-bootstrap-and-configuration.md).
