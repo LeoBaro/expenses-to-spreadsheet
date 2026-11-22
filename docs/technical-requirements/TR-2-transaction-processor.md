@@ -120,7 +120,8 @@ external access. The round trip to the Bot (present options → relay selection)
 - **One live prompt per conversation (decided, DD-9):** the FR-6 prompt is the only one
   sent as a new message; `send_options` returns its message id, kept on the `Session`.
   Every later step, Back, and month change **edits that message in place**, and each
-  prompt repeats the transaction details. A callback is accepted only from that live
+  prompt repeats the transaction details, plus "⏳ N more transaction(s) waiting" when
+  the FIFO queue (DD-5) is non-empty (counted at render time, so it refreshes on the next tap). A callback is accepted only from that live
   message (in addition to the DD-6 step-tag check), so buttons left on older prompts —
   including those of earlier transactions — are inert. If the presenter cannot report
   an id (`None`), the message check is skipped and the step tag alone applies.

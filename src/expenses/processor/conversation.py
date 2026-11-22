@@ -412,6 +412,11 @@ class ConversationOrchestrator:
         ]
         if with_month:
             lines.append(self._month_line(session))
+        waiting = len(self._queue)
+        if waiting:
+            # Counted when the prompt is rendered; refreshed on the next tap.
+            noun = "transaction" if waiting == 1 else "transactions"
+            lines.append(f"⏳ {waiting} more {noun} waiting")
         return "\n".join(lines)
 
     def _month_line(self, session: Session) -> str:

@@ -776,3 +776,28 @@ async def test_ignore_after_moving_month_writes_nothing():
     await _tap(orch, pres, 1)  # Ignore
     await _tap_skip(orch, pres)
     assert sheets.expenses == [] and state.is_processed("tx-1")
+
+
+# --- waiting count ---------------------------------------------------------------
+
+
+async def test_prompt_shows_how_many_transactions_are_waiting():
+    orch, *_, pres = _make(_full_engine())
+
+    async def reprocess(txn):
+        await orch.handle_unknown(txn)
+
+    orch.set_reprocess(reprocess)
+    await orch.handle_unknown(_txn("tx-1"))
+    assert "waiting" not in pres.last[0]  # nothing queued yet
+
+    await orch.handle_unknown(_txn("tx-2", "A"))
+    await orch.handle_unknown(_txn("tx-3", "B"))
+    await _tap(orch, pres, 0)  # Categorize → re-render picks up the queue
+    assert "⏳ 2 more transactions waiting" in pres.last[0]
+
+    await _tap_back(orch, pres)
+    await _tap(orch, pres, 1)  # Ignore
+    await _tap_skip(orch, pres)  # tx-1 done → tx-2 starts, tx-3 still queued
+    assert orch._active.transaction.id == "tx-2"
+    assert "⏳ 1 more transaction waiting" in pres.last[0]
